@@ -1,5 +1,5 @@
 pub struct Position {
-    /// State of the board, with `NUM_STACKS` stacks of stones of height `MAX_HEIGHT`.
+    /// State of the board, with `NUM_STACKS` stacks of stones of height `STACK_HEIGHT`.
     board: [[Stone; Self::STACK_HEIGHT as usize]; Self::NUM_STACKS as usize],
     /// Number of stone moves played since the beginning of the game.
     moves: u8,
