@@ -253,13 +253,18 @@ impl Position {
         self.banned_moves[self.moves as usize + 1] = Some(last_move);
     }
 
+    /// Parses the moves and plays them one by one.
+    /// Returns on the first error.
+    ///
+    /// Each element of `moves` should be a single move:
+    ///    
+    /// A move can be either:
+    /// 1. A single number representing a stack index, e.g. 1
+    /// 2. A "!" representing a second best call
+    /// 3. Two numbers representing a from and to spot for a move in the second part of the game,
+    ///    separated by a "-", e.g. 0-2
     pub fn parse_and_play_moves(&mut self, moves: Vec<String>) -> Result<(), MoveFailed> {
         for smove in moves {
-            // A move can be either:
-            // 1. A single number representing a stack index, e.g. 1
-            // 2. A "!" representing a second best call
-            // 3. Two numbers representing a from and to spot for a move in the second part of the game,
-            //    separated by a "-", e.g. 0-2
             if smove == "!" {
                 if !self.can_second_best() {
                     return Err(MoveFailed::InvalidSecondBest);
