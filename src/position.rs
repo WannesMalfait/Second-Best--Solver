@@ -277,6 +277,45 @@ impl Position {
         Ok(())
     }
 
+    /// Check if the given player has an alignment on the board:
+    /// Either:
+    /// 1. There is a stack with three stones of the player's color.
+    /// 2. There are 4 stones of the players colors next to each other
+    ///    on the top of the stacks.
+    fn player_has_alignment(&self, player: Color) -> bool {
+        let mut top_of_stacks = [None; Self::NUM_STACKS as usize];
+        for (stack_i, stack) in self.board.iter().enumerate() {
+            let mut all_ours = true;
+            for &stone in stack {
+                if stone.is_none() {
+                    all_ours = false;
+                    break;
+                }
+                top_of_stacks[stack_i] = stone;
+                if stone != Some(player) {
+                    all_ours = false;
+                }
+            }
+            if all_ours {
+                return true;
+            }
+        }
+        // Check for a sequence of 4 in the stack tops.
+        let mut consecutive = 0;
+        for i in 0..(Self::NUM_STACKS + 3) {
+            if top_of_stacks[(i % Self::NUM_STACKS) as usize] == Some(player) {
+                consecutive += 1;
+                if consecutive == 4 {
+                    return true;
+                }
+            } else {
+                consecutive = 0;
+            }
+        }
+        false
+    }
+
+    /// Display the current state of the board.
     pub fn show(&self) {
         //     .
         // .   .   .
@@ -540,5 +579,32 @@ mod tests {
         );
 
         assert_eq!(pos.parse_and_play_moves(vec!["!".to_string()]), Ok(()));
+    }
+
+    #[test]
+    fn alignments() {
+        let mut pos = Position::default();
+        assert!(!pos.player_has_alignment(pos.current_player));
+        pos.parse_and_play_moves("0 0 0".split_whitespace().map(|s| s.to_string()).collect())
+            .unwrap();
+        assert!(!pos.player_has_alignment(pos.current_player));
+        pos.parse_and_play_moves(
+            "1 2 1 2 1"
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect(),
+        )
+        .unwrap();
+        assert!(pos.player_has_alignment(pos.current_player.switch()));
+        pos.second_best();
+        pos.parse_and_play_moves(
+            "2 1 3 7 4 6"
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect(),
+        )
+        .unwrap();
+        pos.show();
+        assert!(pos.player_has_alignment(pos.current_player.switch()));
     }
 }
