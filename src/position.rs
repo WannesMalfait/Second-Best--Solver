@@ -516,4 +516,29 @@ mod tests {
         pos.make_phase_one_move(1, 0);
         assert!(!pos.can_second_best());
     }
+
+    #[test]
+    fn parsing_moves() {
+        let mut pos = Position::default();
+        assert_eq!(
+            pos.parse_and_play_moves(vec!["".to_string()]),
+            Err(MoveFailed::ParseError)
+        );
+
+        assert_eq!(pos.parse_and_play_moves(vec!["0".to_string()]), Ok(()));
+        assert_eq!(
+            pos.parse_and_play_moves(vec!["-0".to_string()]),
+            Err(MoveFailed::ParseError)
+        );
+        assert_eq!(
+            pos.parse_and_play_moves(vec!["1-0".to_string()]),
+            Err(MoveFailed::InvalidFromSpot)
+        );
+        assert_eq!(
+            pos.parse_and_play_moves(vec!["21".to_string()]),
+            Err(MoveFailed::InvalidToSpot)
+        );
+
+        assert_eq!(pos.parse_and_play_moves(vec!["!".to_string()]), Ok(()));
+    }
 }
