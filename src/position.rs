@@ -339,6 +339,17 @@ impl Position {
         false
     }
 
+    /// Returns true if the current player is lost.
+    pub fn game_over(&self) -> bool {
+        if self.can_second_best() {
+            return false;
+        }
+        if self.player_has_alignment(self.current_player.switch()) {
+            return true;
+        }
+        todo!("Check if the current player has no legal moves.")
+    }
+
     /// Display the current state of the board.
     pub fn show(&self) {
         //     .
