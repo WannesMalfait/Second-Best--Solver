@@ -8,6 +8,9 @@ pub mod position;
 fn main() {
     let mut buf;
     let mut cli = Cli::default();
+    println!(
+        "A solver for \"Second-Best!\" by Wannes Malfait.\nType `help` for usage information."
+    );
     loop {
         print!("> ");
         std::io::stdout().flush().unwrap();
