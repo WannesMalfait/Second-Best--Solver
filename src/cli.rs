@@ -98,6 +98,9 @@ impl Cli {
                 or two numbers separated by a '-' indicating the stacks to move from and to."
                 )
             }
+            MoveFailed::PositionWinning => {
+                println!("The position is winning for the other player, so \"Second Best!\" should be called.")
+            }
         }
     }
 }

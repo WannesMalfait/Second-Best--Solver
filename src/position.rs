@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 pub struct Position {
     /// State of the board, with `NUM_STACKS` stacks of stones of height `STACK_HEIGHT`.
     board: [[Stone; Self::STACK_HEIGHT as usize]; Self::NUM_STACKS as usize],
@@ -45,6 +47,18 @@ impl Color {
     }
 }
 
+impl Display for Color {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match &self {
+                Color::Black => "X",
+                Color::White => "O",
+            }
+        )
+    }
+}
 type Stone = Option<Color>;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -69,6 +83,8 @@ pub enum MoveFailed {
     SameFromAndTo,
     /// An error while parsing the move from a string.
     ParseError,
+    /// The position is winning for the other player, so no move except calling "Second Best!" is possible.
+    PositionWinning,
 }
 
 impl Position {
@@ -108,6 +124,9 @@ impl Position {
     pub fn try_make_move(&mut self, smove: Move) -> Result<(), MoveFailed> {
         if self.is_move_banned(smove) {
             return Err(MoveFailed::MoveBanned);
+        }
+        if self.player_has_alignment(self.current_player.switch()) {
+            return Err(MoveFailed::PositionWinning);
         }
         if self.is_second_phase() {
             let Some(from) = smove.from else {
@@ -433,11 +452,11 @@ impl Position {
                 if coordinate == (8, 8) {
                     s += " ";
                 } else {
-                    s += match self.board[coordinate.0][coordinate.1] {
-                        None => ".",
-                        Some(Color::Black) => "X",
-                        Some(Color::White) => "O",
+                    let c = match self.board[coordinate.0][coordinate.1] {
+                        None => ".".to_string(),
+                        Some(c) => c.to_string(),
                     };
+                    s += &c;
                 }
                 s += " ";
             }
@@ -459,6 +478,9 @@ impl Position {
                     Some(from) => format!("{}-{}", from, banned_move.to),
                 }
             )
+        }
+        if self.player_has_alignment(self.current_player.switch()) {
+            println!("{} has an alignment", self.current_player.switch());
         }
     }
 }
