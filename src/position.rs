@@ -21,11 +21,11 @@ impl Position {
     pub const STONES_PER_PLAYER: u8 = 8;
     const MAX_MOVES: u8 = 255;
     // Offset to get to the right of the current stack.
-    const RIGHT: u8 = 1;
+    pub const RIGHT: u8 = 1;
     // Offset to get to the left of the current stack.
-    const LEFT: u8 = Self::NUM_STACKS - 1;
+    pub const LEFT: u8 = Self::NUM_STACKS - 1;
     // Offset to get to the opposite of the current stack.
-    const OPPOSITE: u8 = Self::NUM_STACKS / 2;
+    pub const OPPOSITE: u8 = Self::NUM_STACKS / 2;
 }
 
 impl Default for Position {
@@ -42,7 +42,7 @@ impl Default for Position {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Color {
+pub enum Color {
     Black,
     White,
 }
@@ -72,8 +72,8 @@ type Stone = Option<Color>;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Move {
-    from: Option<u8>,
-    to: u8,
+    pub from: Option<u8>,
+    pub to: u8,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -97,15 +97,30 @@ pub enum MoveFailed {
 }
 
 impl Position {
+    /// Get the board.
+    pub fn board(&self) -> &[[Stone; Self::STACK_HEIGHT as usize]; Self::NUM_STACKS as usize] {
+        &self.board
+    }
+
+    /// The current player to move.
+    pub fn current_player(&self) -> Color {
+        self.current_player
+    }
+
+    /// The banned move in the current position if any.
+    pub fn banned_move(&self) -> Option<Move> {
+        self.banned_moves[self.moves as usize + 1]
+    }
+
     /// Are we in the second phase of the game, where stones are no longer placed, but moved.
     #[inline]
-    fn is_second_phase(&self) -> bool {
+    pub fn is_second_phase(&self) -> bool {
         self.moves >= 2 * Self::STONES_PER_PLAYER
     }
 
     /// The height of the given stack.
     #[inline]
-    fn stack_height(&self, stack: u8) -> u8 {
+    pub fn stack_height(&self, stack: u8) -> u8 {
         self.stack_heights[stack as usize]
     }
 

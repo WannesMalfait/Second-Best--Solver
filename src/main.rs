@@ -3,7 +3,9 @@ use std::io::Write;
 use cli::Cli;
 
 mod cli;
+pub mod movegen;
 pub mod position;
+mod solver;
 
 fn main() {
     let mut buf;
