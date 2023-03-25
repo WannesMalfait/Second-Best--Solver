@@ -11,6 +11,8 @@ pub struct Position {
     move_history: [Option<Move>; Self::MAX_MOVES as usize],
     /// Moves which were prohibited, since "Second Best!" was called on it.
     banned_moves: [Option<Move>; Self::MAX_MOVES as usize],
+    /// The heights of the different stacks. Stored for more efficient lookups.
+    stack_heights: [u8; Self::NUM_STACKS as usize],
 }
 
 impl Position {
@@ -28,6 +30,7 @@ impl Default for Position {
             current_player: Color::Black,
             move_history: [None; Self::MAX_MOVES as usize],
             banned_moves: [None; Self::MAX_MOVES as usize],
+            stack_heights: [0; Self::NUM_STACKS as usize],
         }
     }
 }
@@ -94,15 +97,10 @@ impl Position {
         self.moves >= 2 * Self::STONES_PER_PLAYER
     }
 
+    /// The height of the given stack.
+    #[inline]
     fn stack_height(&self, stack: u8) -> u8 {
-        let mut num_stones = 0;
-        for stone in self.board[stack as usize] {
-            if stone.is_none() {
-                break;
-            }
-            num_stones += 1;
-        }
-        num_stones
+        self.stack_heights[stack as usize]
     }
 
     /// Check if the "to" spot is adjacent or opposite to the "from" spot.
@@ -148,9 +146,9 @@ impl Position {
             // 1. There should be a stone at that spot
             // 2. The stone at that spot should be of the current
             //    player's color.
-            let from_height = self.stack_height(from);
-            if from_height == 0
-                || self.board[from as usize][from_height as usize - 1] != Some(self.current_player)
+            if self.stack_height(from) == 0
+                || self.board[from as usize][self.stack_height(from) as usize - 1]
+                    != Some(self.current_player)
             {
                 return Err(MoveFailed::InvalidFromSpot);
             }
@@ -158,11 +156,12 @@ impl Position {
             // We are moving a stone to the "to" spot, so:
             // 1. The "to" spot should be "adjacent" to the "from" spot
             // 2. The stack at the "to" spot should not be full.
-            let to_height = self.stack_height(smove.to);
-            if !Self::valid_adjacent(from, smove.to) || to_height >= Self::STACK_HEIGHT {
+            if !Self::valid_adjacent(from, smove.to)
+                || self.stack_height(smove.to) >= Self::STACK_HEIGHT
+            {
                 return Err(MoveFailed::InvalidToSpot);
             }
-            self.make_phase_two_move(from, from_height, smove.to, to_height);
+            self.make_phase_two_move(from, smove.to);
             return Ok(());
         }
 
@@ -178,21 +177,22 @@ impl Position {
 
         // We are moving a stone to the "to" spot, so:
         // the stack at the "to" spot should not be full.
-        let to_height = self.stack_height(smove.to);
-        if to_height >= Self::STACK_HEIGHT {
+        if self.stack_height(smove.to) >= Self::STACK_HEIGHT {
             return Err(MoveFailed::InvalidToSpot);
         }
-        self.make_phase_one_move(smove.to, to_height);
+        self.make_phase_one_move(smove.to);
         Ok(())
     }
 
     /// Make a move in the second phase of the game (moving a stone to an adjacent stack).
     /// The move should be valid.
-    fn make_phase_two_move(&mut self, from: u8, from_height: u8, to: u8, to_height: u8) {
+    fn make_phase_two_move(&mut self, from: u8, to: u8) {
         // Remove stone from the "from" stack.
-        self.board[from as usize][from_height as usize - 1] = None;
+        self.board[from as usize][self.stack_height(from) as usize - 1] = None;
+        self.stack_heights[from as usize] -= 1;
         // Place stone on top of the "to" stack.
-        self.board[to as usize][to_height as usize] = Some(self.current_player);
+        self.board[to as usize][self.stack_height(to) as usize] = Some(self.current_player);
+        self.stack_heights[to as usize] += 1;
         // Update board information.
         self.moves += 1;
         self.current_player = self.current_player.switch();
@@ -204,9 +204,10 @@ impl Position {
 
     /// Make a move in the first phase of the game (placing a stone on one of the stacks).
     /// The move should be valid.
-    fn make_phase_one_move(&mut self, to: u8, to_height: u8) {
+    fn make_phase_one_move(&mut self, to: u8) {
         // Place stone on top of the "to" stack.
-        self.board[to as usize][to_height as usize] = Some(self.current_player);
+        self.board[to as usize][self.stack_height(to) as usize] = Some(self.current_player);
+        self.stack_heights[to as usize] += 1;
         // Update board information.
         self.moves += 1;
         self.current_player = self.current_player.switch();
@@ -230,10 +231,12 @@ impl Position {
         let to_height = self.stack_height(to);
         // Remove the stone placed on this stack.
         self.board[to as usize][to_height as usize - 1] = None;
+        self.stack_heights[to as usize] -= 1;
         if let Some(from) = last_move.from {
             let from_height = self.stack_height(from);
             // Place back the stone on the stack it came from.
             self.board[from as usize][from_height as usize] = Some(self.current_player);
+            self.stack_heights[from as usize] += 1;
         }
         last_move
     }
@@ -307,27 +310,25 @@ impl Position {
     /// 2. There are 4 stones of the players colors next to each other
     ///    on the top of the stacks.
     fn player_has_alignment(&self, player: Color) -> bool {
-        let mut top_of_stacks = [None; Self::NUM_STACKS as usize];
         for (stack_i, stack) in self.board.iter().enumerate() {
-            let mut all_ours = true;
-            for &stone in stack {
-                if stone.is_none() {
-                    all_ours = false;
-                    break;
-                }
-                top_of_stacks[stack_i] = stone;
-                if stone != Some(player) {
-                    all_ours = false;
-                }
+            if self.stack_height(stack_i as u8) != Self::STACK_HEIGHT {
+                continue;
             }
-            if all_ours {
+            // Are all the stones in the stack of the given player?
+            if stack.iter().all(|&c| c == Some(player)) {
                 return true;
             }
         }
         // Check for a sequence of 4 in the stack tops.
         let mut consecutive = 0;
         for i in 0..(Self::NUM_STACKS + 3) {
-            if top_of_stacks[(i % Self::NUM_STACKS) as usize] == Some(player) {
+            let stack_i = (i % Self::NUM_STACKS) as usize;
+            let height = self.stack_heights[stack_i];
+            if height == 0 {
+                consecutive = 0;
+                continue;
+            }
+            if self.board[stack_i][height as usize - 1] == Some(player) {
                 consecutive += 1;
                 if consecutive == 4 {
                     return true;
@@ -582,7 +583,7 @@ mod tests {
     fn second_best() {
         let mut pos = Position::default();
         assert!(!pos.can_second_best());
-        pos.make_phase_one_move(0, 0);
+        pos.make_phase_one_move(0);
         assert!(pos.can_second_best());
         pos.second_best();
         assert_eq!(pos.moves, 0);
@@ -590,7 +591,7 @@ mod tests {
             pos.try_make_move(Move { from: None, to: 0 }),
             Err(MoveFailed::MoveBanned)
         );
-        pos.make_phase_one_move(1, 0);
+        pos.make_phase_one_move(1);
         assert!(!pos.can_second_best());
     }
 
