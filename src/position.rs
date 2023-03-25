@@ -20,6 +20,12 @@ impl Position {
     pub const STACK_HEIGHT: u8 = 3;
     pub const STONES_PER_PLAYER: u8 = 8;
     const MAX_MOVES: u8 = 255;
+    // Offset to get to the right of the current stack.
+    const RIGHT: u8 = 1;
+    // Offset to get to the left of the current stack.
+    const LEFT: u8 = Self::NUM_STACKS - 1;
+    // Offset to get to the opposite of the current stack.
+    const OPPOSITE: u8 = Self::NUM_STACKS / 2;
 }
 
 impl Default for Position {
@@ -105,11 +111,9 @@ impl Position {
 
     /// Check if the "to" spot is adjacent or opposite to the "from" spot.
     fn valid_adjacent(from: u8, to: u8) -> bool {
-        // We add Self::NUM_STACKS before subtracting 1
-        // to prevent an underflow.
-        (from + 1) % Self::NUM_STACKS == to
-            || (from + Self::NUM_STACKS / 2) % Self::NUM_STACKS == to
-            || (from + Self::NUM_STACKS - 1) % Self::NUM_STACKS == to
+        (from + Self::RIGHT) % Self::NUM_STACKS == to
+            || (from + Self::OPPOSITE) % Self::NUM_STACKS == to
+            || (from + Self::LEFT) % Self::NUM_STACKS == to
     }
 
     /// Is the given move banned due to a "Second Best!" call?
@@ -348,7 +352,30 @@ impl Position {
         if self.player_has_alignment(self.current_player.switch()) {
             return true;
         }
-        todo!("Check if the current player has no legal moves.")
+        // Check if the current player has no legal moves.
+        if !self.is_second_phase() {
+            return false;
+        }
+        for (stack_i, stack) in self.board.iter().enumerate() {
+            let height = self.stack_heights[stack_i];
+            let stack_i = stack_i as u8;
+            if height == 0 {
+                continue;
+            }
+            if stack[height as usize - 1] != Some(self.current_player) {
+                continue;
+            }
+            // Check if there is a free spot to move the stone to.
+            if self.stack_height((stack_i + Self::RIGHT) % Self::NUM_STACKS) < Self::STACK_HEIGHT
+                || self.stack_height((stack_i + Self::OPPOSITE) % Self::NUM_STACKS)
+                    < Self::STACK_HEIGHT
+                || self.stack_height((stack_i + Self::LEFT) % Self::NUM_STACKS) < Self::STACK_HEIGHT
+            {
+                return false;
+            }
+        }
+        // No legal move, so the game is over;
+        true
     }
 
     /// Display the current state of the board.
@@ -645,5 +672,64 @@ mod tests {
         .unwrap();
         pos.show();
         assert!(pos.player_has_alignment(pos.current_player.switch()));
+    }
+    #[test]
+    fn game_over() {
+        let mut pos = Position::default();
+        assert!(!pos.game_over());
+        pos.parse_and_play_moves(
+            "0 1 0 1 0"
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect(),
+        )
+        .unwrap();
+        pos.show();
+        // Can still call second best.
+        assert!(!pos.game_over());
+        pos.second_best();
+        pos.parse_and_play_moves(
+            "1 0 ! 7 7 ! 0"
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect(),
+        )
+        .unwrap();
+        pos.show();
+        // No more second best allowed, and opponent has an alignment.
+        assert!(pos.game_over());
+        pos.unmake_move();
+        pos.show();
+
+        pos.parse_and_play_moves(
+            "4 7 7 3 5 3 3"
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect(),
+        )
+        .unwrap();
+        pos.show();
+        assert!(!pos.game_over());
+        pos.make_phase_one_move(5);
+        pos.make_phase_one_move(5);
+        pos.make_phase_one_move(4);
+        assert!(!pos.game_over());
+        pos.show();
+        pos.try_make_move(Move {
+            from: Some(7),
+            to: 0,
+        })
+        .unwrap();
+        pos.show();
+        assert!(!pos.game_over());
+        pos.second_best();
+        pos.try_make_move(Move {
+            from: Some(0),
+            to: 4,
+        })
+        .unwrap();
+        pos.show();
+        // No legal moves.
+        assert!(pos.game_over());
     }
 }
