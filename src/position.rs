@@ -48,7 +48,7 @@ pub enum Color {
 }
 
 impl Color {
-    fn switch(&self) -> Self {
+    pub fn switch(&self) -> Self {
         match self {
             Color::Black => Color::White,
             Color::White => Color::Black,
@@ -328,7 +328,7 @@ impl Position {
     /// 1. There is a stack with three stones of the player's color.
     /// 2. There are 4 stones of the players colors next to each other
     ///    on the top of the stacks.
-    fn player_has_alignment(&self, player: Color) -> bool {
+    pub fn player_has_alignment(&self, player: Color) -> bool {
         for (stack_i, stack) in self.board.iter().enumerate() {
             if self.stack_height(stack_i as u8) != Self::STACK_HEIGHT {
                 continue;

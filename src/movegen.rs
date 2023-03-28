@@ -24,7 +24,7 @@ enum Adjacent {
 }
 
 impl MoveGen {
-    fn new(pos: Position) -> Self {
+    pub fn new(pos: &Position) -> Self {
         let mut our_stacks = [false; Position::NUM_STACKS as usize];
         let mut full_stacks = [false; Position::NUM_STACKS as usize];
         for (stack_i, stack) in pos.board().iter().enumerate() {
@@ -115,5 +115,55 @@ impl Iterator for MoveGen {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MoveGen;
+    use crate::position;
+
+    #[test]
+    fn starting_pos() {
+        let mut pos = position::Position::default();
+        let moves = MoveGen::new(&pos);
+        assert_eq!(moves.count(), 8);
+        let moves = MoveGen::new(&pos);
+        for smove in moves {
+            pos.try_make_move(smove).unwrap();
+            pos.unmake_move();
+        }
+    }
+
+    #[test]
+    fn second_phase() {
+        let mut pos = position::Position::default();
+        pos.parse_and_play_moves(
+            "0 0 1 1 2 3 2 3 4 4 0 1 6 6 6 7"
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect(),
+        )
+        .unwrap();
+        assert!(pos.is_second_phase());
+        let moves = MoveGen::new(&pos);
+        for smove in moves {
+            pos.try_make_move(smove).unwrap();
+            if !pos.player_has_alignment(pos.current_player().switch()) {
+                let moves = MoveGen::new(&pos);
+                for smove in moves {
+                    pos.try_make_move(smove).unwrap();
+                    if !pos.player_has_alignment(pos.current_player().switch()) {
+                        let moves = MoveGen::new(&pos);
+                        for smove in moves {
+                            pos.try_make_move(smove).unwrap();
+                            pos.unmake_move();
+                        }
+                    }
+                    pos.unmake_move();
+                }
+            }
+            pos.unmake_move();
+        }
     }
 }
