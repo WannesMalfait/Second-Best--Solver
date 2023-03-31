@@ -70,7 +70,7 @@ impl Display for Color {
 }
 type Stone = Option<Color>;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Move {
     pub from: Option<u8>,
     pub to: u8,
@@ -203,6 +203,16 @@ impl Position {
         Ok(())
     }
 
+    /// Make a move in the given position.
+    /// No checks are done whether the move is valid.
+    /// For a safe version of this method, use [`try_make_move`].
+    pub fn make_move(&mut self, smove: Move) {
+        match smove.from {
+            Some(from) => self.make_phase_two_move(from, smove.to),
+            None => self.make_phase_one_move(smove.to),
+        }
+    }
+
     /// Make a move in the second phase of the game (moving a stone to an adjacent stack).
     /// The move should be valid.
     fn make_phase_two_move(&mut self, from: u8, to: u8) {
@@ -243,7 +253,7 @@ impl Position {
             unreachable!("There should be a move, because we have played that many moves.")
         };
         self.move_history[self.moves as usize] = None;
-        self.banned_moves[self.moves as usize] = None;
+        self.banned_moves[self.moves as usize + 1] = None;
         self.moves -= 1;
         self.current_player = self.current_player.switch();
         let to = last_move.to;
@@ -262,10 +272,13 @@ impl Position {
 
     /// Check if "Second Best!" can be called this move.
     /// 1. There should be at least one move played.
-    /// 2. "Second Best!" should not have been called yet.
+    /// 2. "Second Best!" should not have been called yet this turn.
+    /// 3. "Second Best!" should not have been called previous turn.
     #[inline]
     pub fn can_second_best(&self) -> bool {
-        self.moves > 0 && self.banned_moves[self.moves as usize].is_none()
+        self.moves > 0
+            && self.banned_moves[self.moves as usize].is_none()
+            && self.banned_moves[self.moves as usize + 1].is_none()
     }
 
     /// Opponent called "Second Best!"
@@ -273,6 +286,14 @@ impl Position {
     pub fn second_best(&mut self) {
         let last_move = self.unmake_move();
         self.banned_moves[self.moves as usize + 1] = Some(last_move);
+    }
+
+    /// Undo a "Second Best!" call.
+    /// Should only be called if there is a banned move in the current position.
+    pub fn undo_second_best(&mut self) {
+        let banned_move = self.banned_moves[self.moves as usize + 1].unwrap();
+        self.banned_moves[self.moves as usize + 1] = None;
+        self.make_move(banned_move);
     }
 
     /// Parses the moves and plays them one by one.
@@ -635,6 +656,13 @@ mod tests {
         );
         pos.make_phase_one_move(1);
         assert!(!pos.can_second_best());
+
+        pos.make_phase_one_move(7);
+        pos.make_phase_one_move(7);
+        assert!(pos.can_second_best());
+        pos.second_best();
+        // Can't "Second Best!" a "Second Best!"
+        assert!(!pos.can_second_best());
     }
 
     #[test]
@@ -746,5 +774,51 @@ mod tests {
         pos.show();
         // No legal moves.
         assert!(pos.game_over());
+    }
+
+    #[test]
+    fn unmake_move() {
+        let mut pos = Position::default();
+        pos.make_phase_one_move(0);
+        pos.make_phase_one_move(0);
+        pos.make_phase_one_move(1);
+        pos.make_phase_one_move(1);
+        pos.show();
+        assert!(pos.can_second_best());
+        pos.second_best();
+        pos.show();
+        assert!(!pos.can_second_best());
+        pos.make_phase_one_move(0);
+        pos.show();
+        assert!(!pos.can_second_best());
+        pos.unmake_move();
+        pos.show();
+        assert!(!pos.can_second_best());
+        pos.make_phase_one_move(3);
+        pos.show();
+        assert!(!pos.can_second_best());
+        pos.unmake_move();
+        pos.show();
+        assert!(!pos.can_second_best());
+        pos.unmake_move();
+        assert!(pos.can_second_best());
+        pos.show();
+        pos.make_phase_one_move(5);
+        pos.show();
+        assert!(pos.can_second_best());
+    }
+
+    #[test]
+    fn undo_second_best() {
+        let mut pos = Position::default();
+        pos.make_phase_one_move(0);
+        pos.make_phase_one_move(0);
+        pos.make_phase_one_move(0);
+        pos.show();
+        pos.second_best();
+        assert!(!pos.can_second_best());
+        pos.undo_second_best();
+        pos.show();
+        assert!(pos.can_second_best());
     }
 }

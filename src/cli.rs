@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use std::vec::Vec;
 
 use crate::position::{MoveFailed, Position};
+use crate::solver::Solver;
 
 #[derive(Subcommand, Debug)]
 #[command(author, version, about, multicall = true)]
@@ -22,6 +23,12 @@ enum Command {
         /// The moves to be played from the current position.
         moves: Vec<String>,
     },
+    /// Evaluate the current position to the given depth.
+    Eval {
+        #[arg(default_value_t = 3)]
+        /// The depth to which to evaluate the given position.
+        depth: usize,
+    },
 }
 
 #[derive(Parser, Debug)]
@@ -32,7 +39,7 @@ struct CliArgs {
 
 #[derive(Default)]
 pub struct Cli {
-    pos: Position,
+    solver: Solver,
 }
 
 impl Cli {
@@ -54,21 +61,24 @@ impl Cli {
         };
         match args.command {
             Command::Quit => return Ok(true),
-            Command::Show => self.pos.show(),
+            Command::Show => self.solver.position.show(),
             Command::SetPos { moves } => {
-                self.pos = Position::default();
-                if let Err(e) = self.pos.parse_and_play_moves(moves) {
+                self.solver.position = Position::default();
+                if let Err(e) = self.solver.position.parse_and_play_moves(moves) {
                     Self::display_error_help(e);
                 } else {
-                    self.pos.show();
+                    self.solver.position.show();
                 }
             }
             Command::Play { moves } => {
-                if let Err(e) = self.pos.parse_and_play_moves(moves) {
+                if let Err(e) = self.solver.position.parse_and_play_moves(moves) {
                     Self::display_error_help(e);
                 } else {
-                    self.pos.show();
+                    self.solver.position.show();
                 }
+            }
+            Command::Eval { depth } => {
+                println!("Eval at depth {depth} is {}", self.solver.negamax(depth));
             }
         }
         Ok(false)
