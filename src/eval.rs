@@ -32,3 +32,8 @@ pub fn static_eval(pos: &Position) -> isize {
     }
     score
 }
+
+#[inline]
+pub fn loss_score(pos: &Position) -> isize {
+    LOSS + pos.num_moves() as isize
+}

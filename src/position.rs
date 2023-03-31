@@ -112,6 +112,11 @@ impl Position {
         self.banned_moves[self.moves as usize + 1]
     }
 
+    /// The number of moves that have been played in the current position.
+    pub fn num_moves(&self) -> u8 {
+        self.moves
+    }
+
     /// Are we in the second phase of the game, where stones are no longer placed, but moved.
     #[inline]
     pub fn is_second_phase(&self) -> bool {
