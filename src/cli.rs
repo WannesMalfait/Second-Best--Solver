@@ -78,7 +78,7 @@ impl Cli {
                 }
             }
             Command::Eval { depth } => {
-                println!("Eval at depth {depth} is {}", self.solver.negamax(depth));
+                println!("Eval at depth {depth} is {}", self.solver.search(depth));
             }
         }
         Ok(false)

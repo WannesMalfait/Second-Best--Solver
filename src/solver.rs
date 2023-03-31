@@ -1,16 +1,19 @@
 use crate::eval;
 use crate::movegen;
 use crate::position::Position;
+use std::time;
 
 #[derive(Default)]
 pub struct Solver {
     pub position: Position,
+    nodes: usize,
 }
 
 impl Solver {
     /// Do a min max search on the current position.
     /// Returns the score of the current position.
-    pub fn negamax(&mut self, depth: usize) -> isize {
+    fn negamax(&mut self, depth: usize) -> isize {
+        self.nodes += 1;
         if self.position.game_over() {
             // The position is lost, so return the lowest possible score.
             return eval::LOSS;
@@ -50,5 +53,16 @@ impl Solver {
             }
         }
         best_score
+    }
+
+    pub fn search(&mut self, depth: usize) -> isize {
+        self.nodes = 0;
+        let start = time::Instant::now();
+        let score = self.negamax(depth);
+        let elapsed = start.elapsed();
+        let nodes = self.nodes;
+        let knps = self.nodes as u128 / elapsed.as_millis();
+        println!("Searched {nodes} nodes in {:?} ({knps} kn/s)", elapsed);
+        score
     }
 }
