@@ -34,7 +34,7 @@ impl Solver {
         // First try to do "Second Best!"
         if self.position.can_second_best() {
             self.position.second_best();
-            best_score = max(best_score, -self.negamax(depth + 1, -beta, -alpha));
+            best_score = max(best_score, -self.negamax(depth, -beta, -alpha));
             alpha = max(alpha, best_score);
             self.position.undo_second_best();
             if alpha >= beta {
