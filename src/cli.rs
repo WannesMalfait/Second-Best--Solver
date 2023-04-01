@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use std::vec::Vec;
 
+use crate::eval;
 use crate::position::{MoveFailed, Position};
 use crate::solver::Solver;
 
@@ -78,7 +79,8 @@ impl Cli {
                 }
             }
             Command::Eval { depth } => {
-                println!("Eval at depth {depth} is {}", self.solver.search(depth));
+                let eval = self.solver.search(depth);
+                println!("{}", eval::explain_eval(&self.solver.position, eval));
             }
         }
         Ok(false)

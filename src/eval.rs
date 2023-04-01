@@ -33,7 +33,31 @@ pub fn static_eval(pos: &Position) -> isize {
     score
 }
 
+/// The evaluation of a loss in the given position.
 #[inline]
 pub fn loss_score(pos: &Position) -> isize {
     LOSS + pos.num_moves() as isize
+}
+
+/// Explain an evaluation in a human readable way.
+pub fn explain_eval(pos: &Position, eval: isize) -> String {
+    if eval < LOSS + Position::MAX_MOVES as isize {
+        format!(
+            "Position is lost:\n{} can win in {} move(s)",
+            pos.current_player().switch(),
+            eval - LOSS + pos.num_moves() as isize
+        )
+    } else if eval > WIN - Position::MAX_MOVES as isize {
+        format!(
+            "Position is winning:\n{} can win in {} move(s)",
+            pos.current_player(),
+            WIN - eval - pos.num_moves() as isize,
+        )
+    } else {
+        format!(
+            "Result of the position is undetermined.\nBest score for ({}) is {} (Higher is better)",
+            pos.current_player(),
+            eval,
+        )
+    }
 }

@@ -19,7 +19,7 @@ impl Position {
     pub const NUM_STACKS: u8 = 8;
     pub const STACK_HEIGHT: u8 = 3;
     pub const STONES_PER_PLAYER: u8 = 8;
-    const MAX_MOVES: u8 = 255;
+    pub const MAX_MOVES: u8 = 255;
     // Offset to get to the right of the current stack.
     pub const RIGHT: u8 = 1;
     // Offset to get to the left of the current stack.
