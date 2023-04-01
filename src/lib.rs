@@ -1,3 +1,4 @@
+mod bench;
 pub mod cli;
 mod eval;
 mod movegen;

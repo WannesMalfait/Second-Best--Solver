@@ -41,7 +41,7 @@ impl Default for Position {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Color {
     Black,
     White,
@@ -74,6 +74,21 @@ type Stone = Option<Color>;
 pub struct Move {
     pub from: Option<u8>,
     pub to: u8,
+}
+
+impl Display for Move {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match &self.from {
+                Some(from) => {
+                    format!("{}-{}", from, self.to)
+                }
+                None => format!("{}", self.to),
+            }
+        )
+    }
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -349,6 +364,21 @@ impl Position {
         Ok(())
     }
 
+    /// Serialize the position into a string of moves.
+    /// An "inverse" to `parse_and_play_moves`.
+    pub fn serialize(&self) -> String {
+        let mut moves = std::vec::Vec::<String>::new();
+        for move_i in 0..self.moves as usize {
+            if let Some(banned_move) = self.banned_moves[move_i + 1] {
+                let s = format!("{} !", banned_move);
+                moves.push(s);
+            }
+            let s = self.move_history[move_i + 1].unwrap().to_string();
+            moves.push(s);
+        }
+        moves.join(" ")
+    }
+
     /// Check if the given player has an alignment on the board:
     /// Either:
     /// 1. There is a stack with three stones of the player's color.
@@ -556,13 +586,7 @@ impl Position {
             }
         );
         if let Some(banned_move) = self.banned_moves[self.moves as usize + 1] {
-            println!(
-                "Banned move: {}",
-                match banned_move.from {
-                    None => format!("{}", banned_move.to),
-                    Some(from) => format!("{}-{}", from, banned_move.to),
-                }
-            )
+            println!("Banned move: {}", banned_move)
         }
         if self.player_has_alignment(self.current_player.switch()) {
             println!("{} has an alignment", self.current_player.switch());
@@ -825,5 +849,25 @@ mod tests {
         pos.undo_second_best();
         pos.show();
         assert!(pos.can_second_best());
+    }
+
+    #[test]
+    fn serialize() {
+        let mut pos = Position::default();
+        pos.make_phase_one_move(0);
+        pos.make_phase_one_move(0);
+        pos.make_phase_one_move(0);
+        pos.second_best();
+        pos.make_phase_one_move(1);
+        pos.make_phase_one_move(1);
+        pos.make_phase_one_move(1);
+        let moves = pos.serialize();
+        let mut pos2 = Position::default();
+        pos2.parse_and_play_moves(moves.split_whitespace().map(|s| s.to_string()).collect())
+            .unwrap();
+        assert_eq!(pos.moves, pos2.moves);
+        assert_eq!(pos.board, pos2.board);
+        assert_eq!(pos.banned_moves, pos2.banned_moves);
+        assert_eq!(pos.move_history, pos2.move_history);
     }
 }
