@@ -3,6 +3,15 @@ use crate::position::Position;
 pub const WIN: isize = 1000;
 pub const LOSS: isize = -WIN;
 
+pub enum ExplainableEval {
+    /// A win, with how many moves needed to get there.
+    Win(isize),
+    /// A loss, with how many moves needed to get there.
+    Loss(isize),
+    /// Position is not yet solved, best score at the searched depth.
+    Undetermined(isize),
+}
+
 /// Return a static evaluation of the position.
 pub fn static_eval(pos: &Position) -> isize {
     // For now just count how many stacks are controlled by each player.
@@ -39,25 +48,34 @@ pub fn loss_score(pos: &Position) -> isize {
     LOSS + pos.num_moves() as isize
 }
 
+/// Turn the evaluation into a more digestible enum.
+pub fn decode_eval(pos: &Position, eval: isize) -> ExplainableEval {
+    if eval < LOSS + Position::MAX_MOVES as isize {
+        ExplainableEval::Loss(eval - LOSS - pos.num_moves() as isize)
+    } else if eval > WIN - Position::MAX_MOVES as isize {
+        ExplainableEval::Win(WIN - eval - pos.num_moves() as isize)
+    } else {
+        ExplainableEval::Undetermined(eval)
+    }
+}
+
 /// Explain an evaluation in a human readable way.
 pub fn explain_eval(pos: &Position, eval: isize) -> String {
-    if eval < LOSS + Position::MAX_MOVES as isize {
-        format!(
-            "Position is lost:\n{} can win in {} move(s)",
-            pos.current_player().switch(),
-            eval - LOSS + pos.num_moves() as isize
-        )
-    } else if eval > WIN - Position::MAX_MOVES as isize {
-        format!(
+    match decode_eval(pos, eval) {
+        ExplainableEval::Win(moves) => format!(
             "Position is winning:\n{} can win in {} move(s)",
             pos.current_player(),
-            WIN - eval - pos.num_moves() as isize,
-        )
-    } else {
-        format!(
+            moves
+        ),
+        ExplainableEval::Loss(moves) => format!(
+            "Position is lost:\n{} can win in {} move(s)",
+            pos.current_player().switch(),
+            moves
+        ),
+        ExplainableEval::Undetermined(eval) => format!(
             "Result of the position is undetermined.\nBest score for ({}) is {} (Higher is better)",
             pos.current_player(),
             eval,
-        )
+        ),
     }
 }
