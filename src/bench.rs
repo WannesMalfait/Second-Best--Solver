@@ -195,9 +195,9 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
             total_time += time;
         }
         println!("Finished benchmark:\n\
-            Average time: {}s\n\
-            Average number of nodes searched: {}\n\
-            Average knps: {} knps\n",
+            Average time: {:.4}s\n\
+            Average number of nodes searched: {:.2}\n\
+            Average knps: {:.2} knps\n",
         total_time as f64 / 1_000_000.0 / positions.len() as f64,
         total_nodes as f64 / positions.len() as f64,
         total_nodes as f64 * 1000. / total_time as f64
