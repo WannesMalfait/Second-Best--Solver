@@ -16,8 +16,12 @@ cargo run --release
 You can then interact through a CLI with the solver. Use the `help` command for usage info:
 
 ```terminal
-> help
+help
 ```
+
+## Current Progress
+
+To see the progress of the solver in the benchmarks look [here](./benchmark_results.md).
 
 ## Contributing
 
