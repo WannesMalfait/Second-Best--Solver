@@ -14,7 +14,7 @@ pub const BENCHMARKS_PATH: &str = "./benchmarks/";
 
 /// Generate a benchmark file with the given specifications
 /// 1. `num_positions` is the number of positions in the benchmark
-/// 2. `min_moves` is the minimum number of moves that need to played
+/// 2. `moves` is the bounds on the number of moves that need to played
 ///     for the position to be in the benchmark.
 /// 3. `depth` gives a lower and upper bound on the depth needed to solve
 ///    the position.
@@ -23,8 +23,8 @@ pub const BENCHMARKS_PATH: &str = "./benchmarks/";
 pub fn generate_benchmark_file(
     abort: Arc<AtomicBool>,
     num_positions: usize,
-    min_moves: usize,
-    depth: Range<usize>,
+    moves_range: Range<usize>,
+    depth_range: Range<usize>,
 ) -> io::Result<()> {
     let mut positions = vec::Vec::with_capacity(num_positions);
     let mut counter = 0;
@@ -32,7 +32,7 @@ pub fn generate_benchmark_file(
         counter += 1;
         println!("Generating position {}", positions.len());
         let mut solver = solver::Solver::new(abort.clone());
-        let moves = generate_random_position(&mut solver, min_moves, &depth, counter);
+        let moves = generate_random_position(&mut solver, &moves_range, &depth_range, counter);
         if abort.load(std::sync::atomic::Ordering::Relaxed) {
             println!("Stopping benchmark generation.");
             break;
@@ -47,7 +47,10 @@ pub fn generate_benchmark_file(
         println!("No benchmarks generated.");
         return Ok(());
     }
-    let file_name = format!("bench_{min_moves}_{}-{}", depth.start, depth.end);
+    let file_name = format!(
+        "bench_{}-{}_{}-{}",
+        moves_range.start, moves_range.end, depth_range.start, depth_range.end
+    );
     let path = PathBuf::from(BENCHMARKS_PATH);
     std::fs::create_dir_all(&path)?;
     let path = path.join(&file_name);
@@ -61,30 +64,30 @@ pub fn generate_benchmark_file(
 /// satisfying the given parameters.
 fn generate_random_position(
     solver: &mut solver::Solver,
-    min_moves: usize,
-    depth: &Range<usize>,
+    moves_range: &Range<usize>,
+    depth_range: &Range<usize>,
     mut seed: usize,
 ) -> Option<String> {
     if solver.abort_search() {
         return None;
     }
 
-    if solver.position.num_moves() > min_moves as u8 + 40 {
+    if solver.position.num_moves() > moves_range.end as u8 {
         // Searching way too deep.
         return None;
     }
-    if solver.position.num_moves() < min_moves as u8 {
+    if solver.position.num_moves() < moves_range.start as u8 {
         if solver.position.game_over() {
             // We are in a game over state, but not deep enough yet.
             return None;
         }
     } else {
-        let eval = solver.search(depth.end);
+        let eval = solver.search(depth_range.end);
         let eval = eval::decode_eval(&solver.position, eval);
         match eval {
             eval::ExplainableEval::Undetermined(_) => (),
             eval::ExplainableEval::Win(moves) | eval::ExplainableEval::Loss(moves) => {
-                if moves >= depth.start as isize {
+                if moves >= depth_range.start as isize {
                     // Position is solvable in given depth.
                     return Some(solver.position.serialize());
                 } else {
@@ -105,7 +108,7 @@ fn generate_random_position(
         (move_i, seed) = next_rand(seed);
         let smove = moves[move_i % moves.len()];
         solver.position.make_move(smove);
-        if let Some(result) = generate_random_position(solver, min_moves, depth, seed) {
+        if let Some(result) = generate_random_position(solver, moves_range, depth_range, seed) {
             return Some(result);
         }
         // Didn't work, try another move.

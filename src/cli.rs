@@ -47,6 +47,8 @@ struct GenBenchArgs {
     num_positions: usize,
     /// The minimal number of moves in each position.
     min_moves: usize,
+    /// The maximal number of moves in each position.
+    max_moves: usize,
     /// The minimal amount of depth needed to solve each position.
     min_depth: usize,
     /// The maximal amount of depth needed to solve each position.
@@ -111,6 +113,7 @@ impl Cli {
                             GenBenchArgs {
                                 num_positions,
                                 min_moves,
+                                max_moves,
                                 min_depth,
                                 max_depth,
                             },
@@ -118,7 +121,7 @@ impl Cli {
                         bench::generate_benchmark_file(
                             abort,
                             num_positions,
-                            min_moves,
+                            min_moves..max_moves,
                             min_depth..max_depth,
                         )
                         .unwrap();
