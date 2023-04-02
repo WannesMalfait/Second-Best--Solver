@@ -165,12 +165,17 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
                 thread_positions.push(positions[position_id].to_string());
             }
             let abort = abort.clone();
+            let main_thread = thread_id == 0;
 
             thread_handlers.push(std::thread::spawn(move || {
                 let mut solver = solver::Solver::new(abort);
                 let mut total_nodes = 0;
                 let mut total_time = 0;
-                for position in thread_positions {
+                for (i, position) in thread_positions.iter().enumerate() {
+                    if main_thread {
+                        print!("\rRunning benchmark: {:.2}%", (i as f64 + 1.0) / thread_positions.len() as f64 * 100.);
+                        io::stdout().flush().unwrap();
+                    }
                     solver.position = Position::default();
                     let moves = position.split_whitespace().map(|s| s.to_string()).collect();
                     solver.position.parse_and_play_moves(moves).unwrap();
@@ -181,6 +186,10 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
                     }
                     total_time += now.elapsed().as_micros();
                     total_nodes += solver.nodes();
+                }
+                if main_thread {
+                    // Add a newline after the progress print
+                    println!("\nWaiting for all threads to finish...\n");
                 }
 
                 return (total_nodes, total_time);
