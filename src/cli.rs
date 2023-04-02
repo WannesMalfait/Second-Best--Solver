@@ -1,11 +1,16 @@
 use clap::{Parser, Subcommand};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::mpsc::{self, Sender};
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::vec::Vec;
 
 use crate::position::{MoveFailed, Position};
 use crate::solver::Solver;
 use crate::{bench, eval};
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, PartialEq, Eq)]
 #[command(author, version, about, multicall = true)]
 enum Command {
     /// Quit the CLI
@@ -41,6 +46,8 @@ enum Command {
         /// The maximal amount of depth needed to solve each position.
         max_depth: usize,
     },
+    /// Stop any currently running searches.
+    Stop,
 }
 
 #[derive(Parser, Debug)]
@@ -49,12 +56,56 @@ struct CliArgs {
     command: Command,
 }
 
-#[derive(Default)]
+struct SearchRequest {
+    solver: Arc<Mutex<Solver>>,
+    depth: usize,
+}
+
+enum ThreadRequest {
+    Search(SearchRequest),
+    Quit,
+}
+
+/// A structure for parsing command line arguments
+/// and then executing them.
+/// Search is run in the background, so that new
+/// commands can be received while running.
 pub struct Cli {
-    solver: Solver,
+    solver: Arc<Mutex<Solver>>,
+    abort: Arc<AtomicBool>,
+    sender: Sender<ThreadRequest>,
+}
+
+impl Default for Cli {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Cli {
+    pub fn new() -> Self {
+        let abort = Arc::new(AtomicBool::new(false));
+        let solver = Arc::new(Mutex::new(Solver::new(abort.clone())));
+        let (tx, rx) = mpsc::channel::<ThreadRequest>();
+        std::thread::spawn(move || loop {
+            if let Ok(request) = rx.recv() {
+                match request {
+                    ThreadRequest::Quit => return,
+                    ThreadRequest::Search(req) => {
+                        let mut solver = req.solver.lock().unwrap();
+                        let eval = solver.search(req.depth);
+                        println!("{}", eval::explain_eval(&solver.position, eval));
+                    }
+                }
+            }
+        });
+        Self {
+            solver,
+            abort,
+            sender: tx,
+        }
+    }
+
     /// Parses and executes the command.
     /// On success: returns whether to quit the cli or not.
     /// On failure: returns the io error that caused a failure.
@@ -72,26 +123,33 @@ impl Cli {
             }
         };
         match args.command {
-            Command::Quit => return Ok(true),
-            Command::Show => self.solver.position.show(),
+            Command::Quit => {
+                self.abort.store(true, Ordering::Relaxed);
+                self.sender.send(ThreadRequest::Quit).unwrap();
+                return Ok(true);
+            }
+            Command::Show => self.solver.lock().unwrap().position.show(),
             Command::SetPos { moves } => {
-                self.solver.position = Position::default();
-                if let Err(e) = self.solver.position.parse_and_play_moves(moves) {
+                let solver = &mut *self.solver.lock().unwrap();
+                solver.position = Position::default();
+                if let Err(e) = solver.position.parse_and_play_moves(moves) {
                     Self::display_error_help(e);
                 } else {
-                    self.solver.position.show();
+                    solver.position.show();
                 }
             }
             Command::Play { moves } => {
-                if let Err(e) = self.solver.position.parse_and_play_moves(moves) {
+                let solver = &mut *self.solver.lock().unwrap();
+                if let Err(e) = solver.position.parse_and_play_moves(moves) {
                     Self::display_error_help(e);
                 } else {
-                    self.solver.position.show();
+                    solver.position.show();
                 }
             }
             Command::Eval { depth } => {
-                let eval = self.solver.search(depth);
-                println!("{}", eval::explain_eval(&self.solver.position, eval));
+                let solver = self.solver.clone();
+                let req = SearchRequest { solver, depth };
+                self.sender.send(ThreadRequest::Search(req)).unwrap();
             }
             Command::GenBench {
                 num_positions,
@@ -101,6 +159,9 @@ impl Cli {
             } => {
                 bench::generate_benchmark_file(num_positions, min_moves, min_depth..max_depth)
                     .unwrap();
+            }
+            Command::Stop => {
+                self.abort.store(true, Ordering::Relaxed);
             }
         }
         Ok(false)

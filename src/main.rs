@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use second_best::cli::Cli;
 
 fn main() {
@@ -9,8 +7,6 @@ fn main() {
         "A solver for \"Second-Best!\" by Wannes Malfait.\nType `help` for usage information."
     );
     loop {
-        print!("> ");
-        std::io::stdout().flush().unwrap();
         buf = "".to_string();
         std::io::stdin().read_line(&mut buf).unwrap();
         match cli.execute_command(&buf) {
