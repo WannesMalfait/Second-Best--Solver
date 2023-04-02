@@ -12,6 +12,8 @@ pub struct Solver {
     pub position: Position,
     nodes: usize,
     abort: Arc<AtomicBool>,
+    /// If true, don't print anything to stdout.
+    quiet: bool,
 }
 
 impl Solver {
@@ -20,7 +22,12 @@ impl Solver {
             position: Position::default(),
             nodes: 0,
             abort,
+            quiet: true,
         }
+    }
+
+    pub fn nodes(&self) -> usize {
+        self.nodes
     }
 
     /// Do an alpha beta negamax search on the current position.
@@ -78,6 +85,14 @@ impl Solver {
         self.abort.load(Ordering::Relaxed)
     }
 
+    pub fn be_quiet(&mut self) {
+        self.quiet = true
+    }
+
+    pub fn be_noisy(&mut self) {
+        self.quiet = false
+    }
+
     pub fn search(&mut self, depth: usize) -> isize {
         self.nodes = 0;
         let start = time::Instant::now();
@@ -88,7 +103,9 @@ impl Solver {
         let elapsed = start.elapsed();
         let nodes = self.nodes;
         let knps = self.nodes as u128 / (1 + elapsed.as_millis());
-        println!("Searched {nodes} nodes in {:?} ({knps} kn/s)", elapsed);
+        if !self.quiet {
+            println!("Searched {nodes} nodes in {:?} ({knps} kn/s)", elapsed);
+        }
         score
     }
 }

@@ -1,6 +1,7 @@
 use crate::eval;
 use crate::movegen;
 use crate::position::Move;
+use crate::position::Position;
 use crate::solver;
 
 use std::io::{self, Write};
@@ -125,4 +126,82 @@ fn next_rand(seed: usize) -> (usize, usize) {
     let m = 1 << 31;
     let seed = (a * seed + c) % m;
     (seed >> 4, seed)
+}
+
+/// Run all the benchmarks and print statistics.
+/// To make the benchmark run faster, the work can be spread
+/// over multiple threads. Each position is still assigned to
+/// a unique thread.
+pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<()> {
+    let files = std::fs::read_dir(BENCHMARKS_PATH)?;
+    for file in files {
+        let file = file?;
+        let file_name = file.file_name().into_string().unwrap();
+        if !file_name.starts_with("bench") {
+            continue;
+        }
+        let file_name = file_name.strip_prefix("bench_").unwrap();
+        let params: vec::Vec<usize> = file_name
+            .split("_")
+            .flat_map(|s| s.split("-").map(|n| n.parse::<usize>().unwrap()))
+            .collect();
+        assert!(params.len() == 4);
+        let min_moves = params[0];
+        let max_moves = params[1];
+        let min_depth = params[2];
+        let max_depth = params[3];
+        let file = std::fs::read_to_string(file.path())?;
+        let positions: vec::Vec<_> = file.lines().collect();
+        println!(
+            "\nStarting benchmark with {} positions.\n\
+            number of moves: {min_moves}..{max_moves}\n\
+            solution depth: {min_depth}..{max_depth}\n",
+            positions.len()
+        );
+        let mut thread_handlers = vec![];
+        for thread_id in 0..num_threads {
+            let mut thread_positions = vec![];
+            for position_id in (thread_id..(positions).len()).step_by(num_threads) {
+                thread_positions.push(positions[position_id].to_string());
+            }
+            let abort = abort.clone();
+
+            thread_handlers.push(std::thread::spawn(move || {
+                let mut solver = solver::Solver::new(abort);
+                let mut total_nodes = 0;
+                let mut total_time = 0;
+                for position in thread_positions {
+                    solver.position = Position::default();
+                    let moves = position.split_whitespace().map(|s| s.to_string()).collect();
+                    solver.position.parse_and_play_moves(moves).unwrap();
+                    let now = std::time::Instant::now();
+                    solver.search(max_depth.clone());
+                    if solver.abort_search() {
+                        break;
+                    }
+                    total_time += now.elapsed().as_micros();
+                    total_nodes += solver.nodes();
+                }
+
+                return (total_nodes, total_time);
+            }))
+        }
+
+        let mut total_nodes = 0;
+        let mut total_time = 0;
+        for handler in thread_handlers {
+            let (nodes, time) = handler.join().unwrap();
+            total_nodes += nodes;
+            total_time += time;
+        }
+        println!("Finished benchmark:\n\
+            Average time: {}s\n\
+            Average number of nodes searched: {}\n\
+            Average knps: {} knps\n",
+        total_time as f64 / 1_000_000.0 / positions.len() as f64,
+        total_nodes as f64 / positions.len() as f64,
+        total_nodes as f64 * 1000. / total_time as f64
+        );
+    }
+    Ok(())
 }

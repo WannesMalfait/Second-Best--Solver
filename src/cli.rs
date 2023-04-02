@@ -37,6 +37,11 @@ enum Command {
     },
     /// Generate a benchmark file with the given parameters
     GenBench(GenBenchArgs),
+    /// Run benchmarks
+    Bench {
+        /// The number of threads to run the benchmarks on.
+        num_threads: usize,
+    },
     /// Stop any currently running searches.
     Stop,
 }
@@ -71,9 +76,15 @@ struct GenBenchRequest {
     bench_args: GenBenchArgs,
 }
 
+struct RunBenchRequest {
+    abort: Arc<AtomicBool>,
+    num_threads: usize,
+}
+
 enum ThreadRequest {
     Search(SearchRequest),
     GenBench(GenBenchRequest),
+    RunBench(RunBenchRequest),
     Quit,
 }
 
@@ -104,7 +115,9 @@ impl Cli {
                     ThreadRequest::Quit => return,
                     ThreadRequest::Search(req) => {
                         let mut solver = req.solver.lock().unwrap();
+                        solver.be_noisy();
                         let eval = solver.search(req.depth);
+                        solver.be_quiet();
                         println!("{}", eval::explain_eval(&solver.position, eval));
                     }
                     ThreadRequest::GenBench(GenBenchRequest {
@@ -125,6 +138,9 @@ impl Cli {
                             min_depth..max_depth,
                         )
                         .unwrap();
+                    }
+                    ThreadRequest::RunBench(RunBenchRequest { abort, num_threads }) => {
+                        bench::run_benchmarks(abort, num_threads).unwrap();
                     }
                 }
             }
@@ -189,6 +205,16 @@ impl Cli {
                     bench_args: gen_bench_args,
                 };
                 self.sender.send(ThreadRequest::GenBench(req)).unwrap();
+            }
+            Command::Bench {
+                num_threads: threads,
+            } => {
+                self.abort.store(false, Ordering::Relaxed);
+                let req = RunBenchRequest {
+                    abort: self.abort.clone(),
+                    num_threads: threads,
+                };
+                self.sender.send(ThreadRequest::RunBench(req)).unwrap();
             }
             Command::Stop => {
                 self.abort.store(true, Ordering::Relaxed);
