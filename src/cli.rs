@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Sender};
@@ -36,18 +36,21 @@ enum Command {
         depth: usize,
     },
     /// Generate a benchmark file with the given parameters
-    GenBench {
-        /// The number of positions to generate.
-        num_positions: usize,
-        /// The minimal number of moves in each position.
-        min_moves: usize,
-        /// The minimal amount of depth needed to solve each position.
-        min_depth: usize,
-        /// The maximal amount of depth needed to solve each position.
-        max_depth: usize,
-    },
+    GenBench(GenBenchArgs),
     /// Stop any currently running searches.
     Stop,
+}
+
+#[derive(Debug, Args, PartialEq, Eq)]
+struct GenBenchArgs {
+    /// The number of positions to generate.
+    num_positions: usize,
+    /// The minimal number of moves in each position.
+    min_moves: usize,
+    /// The minimal amount of depth needed to solve each position.
+    min_depth: usize,
+    /// The maximal amount of depth needed to solve each position.
+    max_depth: usize,
 }
 
 #[derive(Parser, Debug)]
@@ -61,8 +64,14 @@ struct SearchRequest {
     depth: usize,
 }
 
+struct GenBenchRequest {
+    abort: Arc<AtomicBool>,
+    bench_args: GenBenchArgs,
+}
+
 enum ThreadRequest {
     Search(SearchRequest),
+    GenBench(GenBenchRequest),
     Quit,
 }
 
@@ -95,6 +104,24 @@ impl Cli {
                         let mut solver = req.solver.lock().unwrap();
                         let eval = solver.search(req.depth);
                         println!("{}", eval::explain_eval(&solver.position, eval));
+                    }
+                    ThreadRequest::GenBench(GenBenchRequest {
+                        abort,
+                        bench_args:
+                            GenBenchArgs {
+                                num_positions,
+                                min_moves,
+                                min_depth,
+                                max_depth,
+                            },
+                    }) => {
+                        bench::generate_benchmark_file(
+                            abort,
+                            num_positions,
+                            min_moves,
+                            min_depth..max_depth,
+                        )
+                        .unwrap();
                     }
                 }
             }
@@ -139,6 +166,7 @@ impl Cli {
                 }
             }
             Command::Play { moves } => {
+                self.abort.store(false, Ordering::Relaxed);
                 let solver = &mut *self.solver.lock().unwrap();
                 if let Err(e) = solver.position.parse_and_play_moves(moves) {
                     Self::display_error_help(e);
@@ -151,14 +179,13 @@ impl Cli {
                 let req = SearchRequest { solver, depth };
                 self.sender.send(ThreadRequest::Search(req)).unwrap();
             }
-            Command::GenBench {
-                num_positions,
-                min_moves,
-                min_depth,
-                max_depth,
-            } => {
-                bench::generate_benchmark_file(num_positions, min_moves, min_depth..max_depth)
-                    .unwrap();
+            Command::GenBench(gen_bench_args) => {
+                self.abort.store(false, Ordering::Relaxed);
+                let req = GenBenchRequest {
+                    abort: self.abort.clone(),
+                    bench_args: gen_bench_args,
+                };
+                self.sender.send(ThreadRequest::GenBench(req)).unwrap();
             }
             Command::Stop => {
                 self.abort.store(true, Ordering::Relaxed);

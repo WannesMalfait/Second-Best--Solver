@@ -27,7 +27,7 @@ impl Solver {
     /// Returns the score of the current position.
     fn negamax(&mut self, depth: usize, mut alpha: isize, beta: isize) -> isize {
         // Don't check this every node, but often often enough.
-        if self.nodes % 1024 == 0 && self.abort.load(Ordering::Relaxed) {
+        if self.nodes % 1024 == 0 && self.abort_search() {
             // Have to stop the search now.
             return 0;
         }
@@ -73,13 +73,16 @@ impl Solver {
         best_score
     }
 
+    /// Returns whether the search is being aborted.
+    pub fn abort_search(&self) -> bool {
+        self.abort.load(Ordering::Relaxed)
+    }
+
     pub fn search(&mut self, depth: usize) -> isize {
         self.nodes = 0;
-        self.abort.store(false, Ordering::Relaxed);
         let start = time::Instant::now();
         let score = self.negamax(depth, eval::LOSS, eval::WIN);
-        if self.abort.load(Ordering::Relaxed) {
-            println!("Search aborted.\nScore is unreliable.\n");
+        if self.abort_search() {
             return score;
         }
         let elapsed = start.elapsed();

@@ -6,6 +6,8 @@ use crate::solver;
 use std::io::{self, Write};
 use std::ops::Range;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::vec;
 
 pub const BENCHMARKS_PATH: &str = "./benchmarks/";
@@ -19,6 +21,7 @@ pub const BENCHMARKS_PATH: &str = "./benchmarks/";
 ///
 /// The benchmark consists of lines with moves to be played.
 pub fn generate_benchmark_file(
+    abort: Arc<AtomicBool>,
     num_positions: usize,
     min_moves: usize,
     depth: Range<usize>,
@@ -28,17 +31,27 @@ pub fn generate_benchmark_file(
     while positions.len() < num_positions {
         counter += 1;
         println!("Generating position {}", positions.len());
-        let mut solver = solver::Solver::default();
-        let moves = generate_random_position(&mut solver, min_moves, &depth, counter).unwrap();
+        let mut solver = solver::Solver::new(abort.clone());
+        let moves = generate_random_position(&mut solver, min_moves, &depth, counter);
+        if abort.load(std::sync::atomic::Ordering::Relaxed) {
+            println!("Stopping benchmark generation.");
+            break;
+        }
+        let moves = moves.unwrap();
         if !positions.contains(&moves) {
             positions.push(moves);
         }
+    }
+    if positions.is_empty() {
+        // Don't create the file if nothing was generated.
+        println!("No benchmarks generated.");
+        return Ok(());
     }
     let file_name = format!("bench_{min_moves}_{}-{}", depth.start, depth.end);
     let path = PathBuf::from(BENCHMARKS_PATH);
     std::fs::create_dir_all(&path)?;
     let path = path.join(&file_name);
-    println!("{:?}", path);
+    println!("Saved bench to {:?} ({} positions)", path, positions.len());
     let mut file = std::fs::File::create(path)?;
     file.write(positions.join("\n").as_bytes())?;
     Ok(())
@@ -52,6 +65,10 @@ fn generate_random_position(
     depth: &Range<usize>,
     mut seed: usize,
 ) -> Option<String> {
+    if solver.abort_search() {
+        return None;
+    }
+
     if solver.position.num_moves() > min_moves as u8 + 40 {
         // Searching way too deep.
         return None;
