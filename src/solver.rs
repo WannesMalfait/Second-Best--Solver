@@ -42,7 +42,7 @@ impl Solver {
         self.nodes += 1;
         if self.position.game_over() {
             // The position is lost, so return the lowest possible score.
-            return eval::loss_score(&self.position);
+            return eval::loss_score(self.position.num_moves() as isize);
         }
 
         if depth == 0 {
@@ -52,7 +52,8 @@ impl Solver {
         }
 
         // Set the best score to the minimal value at first.
-        let mut best_score = eval::loss_score(&self.position);
+        // Worst case is that we lose next move.
+        let mut best_score = eval::loss_score(self.position.num_moves() as isize + 1);
 
         // Look at the child nodes:
 

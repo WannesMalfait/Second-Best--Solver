@@ -33,19 +33,19 @@ pub fn static_eval(pos: &Position) -> isize {
             }
         }
     }
-    if pos.player_has_alignment(pos.current_player()) {
-        score += 10;
-    }
     if pos.player_has_alignment(pos.current_player().switch()) {
         score -= 10;
+    } else if pos.player_has_alignment(pos.current_player()) {
+        // Only get a bonus if our opponent isn't winning already.
+        score += 10;
     }
     score
 }
 
-/// The evaluation of a loss in the given position.
+/// The evaluation of a loss in a position with `num_moves` moves.
 #[inline]
-pub fn loss_score(pos: &Position) -> isize {
-    LOSS + pos.num_moves() as isize
+pub fn loss_score(num_moves: isize) -> isize {
+    LOSS + num_moves
 }
 
 /// Turn the evaluation into a more digestible enum.
