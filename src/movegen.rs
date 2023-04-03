@@ -54,10 +54,7 @@ impl Iterator for MoveGen {
             return None;
         }
         if !self.second_phase {
-            let banned_to = match self.banned_move {
-                Some(smove) => Some(smove.to),
-                None => None,
-            };
+            let banned_to = self.banned_move.map(|smove| smove.to);
             // In the first phase of the game, we just need to find a valid "to" stack.
             while self.stack_i < Position::NUM_STACKS {
                 if !self.full_stacks[self.stack_i as usize] && banned_to != Some(self.stack_i) {
@@ -73,10 +70,7 @@ impl Iterator for MoveGen {
             return None;
         }
 
-        let banned_to = match self.banned_move {
-            Some(smove) => Some(smove.to),
-            None => None,
-        };
+        let banned_to = self.banned_move.map(|smove| smove.to);
         let banned_from = match self.banned_move {
             Some(smove) => smove.from,
             None => None,

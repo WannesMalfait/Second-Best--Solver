@@ -54,10 +54,10 @@ pub fn generate_benchmark_file(
     );
     let path = PathBuf::from(BENCHMARKS_PATH);
     std::fs::create_dir_all(&path)?;
-    let path = path.join(&file_name);
+    let path = path.join(file_name);
     println!("Saved bench to {:?} ({} positions)", path, positions.len());
     let mut file = std::fs::File::create(path)?;
-    file.write(positions.join("\n").as_bytes())?;
+    file.write_all(positions.join("\n").as_bytes())?;
     Ok(())
 }
 
@@ -142,8 +142,8 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
         }
         let file_name = file_name.strip_prefix("bench_").unwrap();
         let params: vec::Vec<usize> = file_name
-            .split("_")
-            .flat_map(|s| s.split("-").map(|n| n.parse::<usize>().unwrap()))
+            .split('_')
+            .flat_map(|s| s.split('-').map(|n| n.parse::<usize>().unwrap()))
             .collect();
         assert!(params.len() == 4);
         let min_moves = params[0];
@@ -173,14 +173,17 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
                 let mut total_time = 0;
                 for (i, position) in thread_positions.iter().enumerate() {
                     if main_thread {
-                        print!("\rRunning benchmark: {:.2}%", (i as f64 + 1.0) / thread_positions.len() as f64 * 100.);
+                        print!(
+                            "\rRunning benchmark: {:.2}%",
+                            (i as f64 + 1.0) / thread_positions.len() as f64 * 100.
+                        );
                         io::stdout().flush().unwrap();
                     }
                     solver.position = Position::default();
                     let moves = position.split_whitespace().map(|s| s.to_string()).collect();
                     solver.position.parse_and_play_moves(moves).unwrap();
                     let now = std::time::Instant::now();
-                    solver.search(max_depth.clone());
+                    solver.search(max_depth);
                     if solver.abort_search() {
                         break;
                     }
@@ -192,7 +195,7 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
                     println!("\nWaiting for all threads to finish...\n");
                 }
 
-                return (total_nodes, total_time);
+                (total_nodes, total_time)
             }))
         }
 
@@ -203,13 +206,14 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
             total_nodes += nodes;
             total_time += time;
         }
-        println!("Finished benchmark:\n\
+        println!(
+            "Finished benchmark:\n\
             Average time: {:.4}s\n\
             Average number of nodes searched: {:.2}\n\
             Average knps: {:.2} knps\n",
-        total_time as f64 / 1_000_000.0 / positions.len() as f64,
-        total_nodes as f64 / positions.len() as f64,
-        total_nodes as f64 * 1000. / total_time as f64
+            total_time as f64 / 1_000_000.0 / positions.len() as f64,
+            total_nodes as f64 / positions.len() as f64,
+            total_nodes as f64 * 1000. / total_time as f64
         );
     }
     Ok(())
