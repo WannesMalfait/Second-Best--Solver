@@ -9,3 +9,11 @@ description = "A solver for the board game: Second Best!"
 
 [dependencies]
 clap = { version = "4.2.1", features = ["derive"] }
+
+
+[dev-dependencies]
+criterion = "0.4"
+
+[[bench]]
+name = "search_speed"
+harness = false
