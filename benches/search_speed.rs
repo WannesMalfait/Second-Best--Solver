@@ -39,9 +39,30 @@ pub fn solver_speed_end(c: &mut Criterion) {
     // });
 }
 
+pub fn solver_efficiency(c: &mut Criterion) {
+    let mut solver = solver::Solver::default();
+    solver.be_quiet();
+    // Position which is not symmetric, but no low depth solution.
+    solver
+        .position
+        .parse_and_play_moves(
+            "0 1 4 5 7 2 1 0 3 4"
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect(),
+        )
+        .unwrap();
+    c.bench_function("solver efficiency (depth 7)", |b| {
+        b.iter(|| solver.search(black_box(7)))
+    });
+    c.bench_function("solver efficiency (depth 9)", |b| {
+        b.iter(|| solver.search(black_box(9)))
+    });
+}
+
 criterion_group! {
     name = benches;
     config = Criterion::default().sample_size(50);
-    targets = solver_speed_begin, solver_speed_end
+    targets = solver_speed_begin, solver_speed_end, solver_efficiency
 }
 criterion_main!(benches);

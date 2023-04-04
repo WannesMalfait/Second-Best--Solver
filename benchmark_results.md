@@ -33,4 +33,8 @@ solver speed end (depth 7)
                         time:   [77.575 ms 77.664 ms 77.763 ms]
 solver speed end (depth 9)
                         time:   [2.3153 s 2.3237 s 2.3336 s]
+solver efficiency (depth 7)
+                        time:   [23.680 ms 24.149 ms 24.663 ms]
+solver efficiency (depth 9)
+                        time:   [217.50 ms 217.66 ms 217.90 ms]
 ```
