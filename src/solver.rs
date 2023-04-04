@@ -96,17 +96,30 @@ impl Solver {
 
     pub fn search(&mut self, depth: usize) -> isize {
         self.nodes = 0;
+        let mut eval = 0;
         let start = time::Instant::now();
-        let score = self.negamax(depth, eval::LOSS, eval::WIN);
-        if self.abort_search() {
-            return score;
+        for depth in 1..=depth {
+            let new_eval = self.negamax(depth, eval::LOSS, eval::WIN);
+            if self.abort_search() {
+                return eval;
+            }
+            eval = new_eval;
+            if !self.quiet {
+                let elapsed = start.elapsed();
+                let nodes = self.nodes;
+                let knps = self.nodes as u128 / (1 + elapsed.as_millis());
+                println!(
+                    "info depth {depth} score {eval} nodes {nodes} knps {knps} ({:?} total time)",
+                    elapsed
+                );
+            }
+            match eval::decode_eval(self.position.num_moves() as isize, eval) {
+                eval::ExplainableEval::Win(_) | eval::ExplainableEval::Loss(_) => {
+                    break;
+                }
+                _ => continue,
+            }
         }
-        let elapsed = start.elapsed();
-        let nodes = self.nodes;
-        let knps = self.nodes as u128 / (1 + elapsed.as_millis());
-        if !self.quiet {
-            println!("Searched {nodes} nodes in {:?} ({knps} kn/s)", elapsed);
-        }
-        score
+        eval
     }
 }
