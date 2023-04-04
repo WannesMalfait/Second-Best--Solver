@@ -1,4 +1,4 @@
-use crate::position::Position;
+use crate::position::{Color, Position};
 
 pub const WIN: isize = 1000;
 pub const LOSS: isize = -WIN;
@@ -49,33 +49,31 @@ pub fn loss_score(num_moves: isize) -> isize {
 }
 
 /// Turn the evaluation into a more digestible enum.
-pub fn decode_eval(pos: &Position, eval: isize) -> ExplainableEval {
+pub fn decode_eval(num_moves: isize, eval: isize) -> ExplainableEval {
     if eval < LOSS + Position::MAX_MOVES as isize {
-        ExplainableEval::Loss(eval - LOSS - pos.num_moves() as isize)
+        ExplainableEval::Loss(eval - LOSS - num_moves)
     } else if eval > WIN - Position::MAX_MOVES as isize {
-        ExplainableEval::Win(WIN - eval - pos.num_moves() as isize)
+        ExplainableEval::Win(WIN - eval - num_moves)
     } else {
         ExplainableEval::Undetermined(eval)
     }
 }
 
 /// Explain an evaluation in a human readable way.
-pub fn explain_eval(pos: &Position, eval: isize) -> String {
-    match decode_eval(pos, eval) {
+pub fn explain_eval(num_moves: isize, side: Color, eval: isize) -> String {
+    match decode_eval(num_moves, eval) {
         ExplainableEval::Win(moves) => format!(
             "Position is winning:\n{} can win in {} move(s)",
-            pos.current_player(),
-            moves
+            side, moves
         ),
         ExplainableEval::Loss(moves) => format!(
             "Position is lost:\n{} can win in {} move(s)",
-            pos.current_player().switch(),
+            side.switch(),
             moves
         ),
         ExplainableEval::Undetermined(eval) => format!(
             "Result of the position is undetermined.\nBest score for ({}) is {} (Higher is better)",
-            pos.current_player(),
-            eval,
+            side, eval,
         ),
     }
 }

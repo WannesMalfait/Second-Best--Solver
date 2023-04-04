@@ -84,7 +84,7 @@ fn generate_random_position(
         }
     } else {
         let eval = solver.search(depth_range.end);
-        let eval = eval::decode_eval(&solver.position, eval);
+        let eval = eval::decode_eval(solver.position.num_moves() as isize, eval);
         match eval {
             eval::ExplainableEval::Undetermined(_) => (),
             eval::ExplainableEval::Win(moves) | eval::ExplainableEval::Loss(moves) => {
