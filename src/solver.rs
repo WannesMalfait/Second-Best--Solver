@@ -1,6 +1,6 @@
 use crate::eval;
 use crate::movegen;
-use crate::movegen::GenericMove;
+use crate::position::BitboardMove;
 use crate::position::Position;
 use std::cmp::max;
 use std::sync::atomic::AtomicBool;
@@ -34,7 +34,7 @@ impl Default for Solver {
 struct PV {
     // Should technically be two times as big, but 128 moves
     // would be a very big pv.
-    pv: [Option<GenericMove>; Position::MAX_MOVES as usize + 1],
+    pv: [Option<BitboardMove>; Position::MAX_MOVES as usize + 1],
     pv_len: usize,
 }
 
@@ -48,7 +48,7 @@ impl Default for PV {
 }
 
 impl PV {
-    pub fn update_pv(&mut self, best_move: GenericMove, child_pv: &[Option<GenericMove>]) {
+    pub fn update_pv(&mut self, best_move: BitboardMove, child_pv: &[Option<BitboardMove>]) {
         self.pv[0] = Some(best_move);
         for (pv, &child) in self.pv[1..].iter_mut().zip(child_pv) {
             *pv = child;
@@ -69,17 +69,17 @@ impl Solver {
         self.nodes
     }
 
-    fn update_pv(&mut self, pv_index: usize, best_move: GenericMove) {
+    fn update_pv(&mut self, pv_index: usize, best_move: BitboardMove) {
         let child = self.pv_table[pv_index + 1];
         self.pv_table[pv_index].update_pv(best_move, &child.pv[..child.pv_len]);
     }
 
-    fn update_pv_depth_one(&mut self, pv_index: usize, best_move: GenericMove) {
+    fn update_pv_depth_one(&mut self, pv_index: usize, best_move: BitboardMove) {
         self.pv_table[pv_index].pv[0] = Some(best_move);
         self.pv_table[pv_index].pv_len = 1;
     }
 
-    fn get_pv_move(&self, pv_index: usize) -> Option<GenericMove> {
+    fn get_pv_move(&self, pv_index: usize) -> Option<BitboardMove> {
         if pv_index < self.pv_table[0].pv_len {
             self.pv_table[0].pv[pv_index]
         } else {
@@ -128,7 +128,7 @@ impl Solver {
         let moves = movegen::MoveGen::new(&self.position, pv_move);
         for (i, smove) in moves.enumerate() {
             match smove {
-                GenericMove::SecondBest => {
+                BitboardMove::SecondBest => {
                     self.position.second_best();
                     best_score = max(
                         best_score,
@@ -136,8 +136,8 @@ impl Solver {
                     );
                     self.position.undo_second_best();
                 }
-                GenericMove::Move(smove) => {
-                    self.position.make_move(smove);
+                BitboardMove::StoneMove(smove) => {
+                    self.position.make_stone_move(smove);
                     best_score = max(
                         best_score,
                         -self.negamax(leftmost && i == 0, depth - 1, pv_index + 1, -beta, -alpha),
@@ -147,7 +147,7 @@ impl Solver {
             }
             if best_score > alpha {
                 alpha = best_score;
-                if depth == 1 && smove != GenericMove::SecondBest {
+                if depth == 1 && smove != BitboardMove::SecondBest {
                     // Special case here to make sure we don't accidentally pick up
                     // a tail from a previous iteration.
                     self.update_pv_depth_one(pv_index, smove);
@@ -199,8 +199,8 @@ impl Solver {
                 while let Some(pv_move) = self.get_pv_move(i) {
                     i += 1;
                     match pv_move {
-                        GenericMove::SecondBest => print!(" !"),
-                        GenericMove::Move(smove) => print!(" {smove}"),
+                        BitboardMove::SecondBest => print!(" !"),
+                        BitboardMove::StoneMove(smove) => print!(" {smove}"),
                     }
                 }
                 println!();

@@ -16,30 +16,7 @@ pub enum ExplainableEval {
 pub fn static_eval(pos: &Position) -> isize {
     // For now just count how many stacks are controlled by each player.
     let mut score = 0;
-    for (stack_i, stack) in pos.board().iter().enumerate() {
-        let height = pos.stack_height(stack_i as u8);
-        if height == 0 {
-            continue;
-        }
-        let top_of_stack = stack[height as usize - 1];
-        match top_of_stack {
-            None => continue,
-            Some(color) => {
-                if color == pos.current_player() {
-                    score += height as isize;
-                } else {
-                    score -= height as isize;
-                }
-            }
-        }
-    }
-    if pos.player_has_alignment(pos.current_player().switch()) {
-        score -= 10;
-    } else if pos.player_has_alignment(pos.current_player()) {
-        // Only get a bonus if our opponent isn't winning already.
-        score += 10;
-    }
-    score
+    todo!("Write evaluation function");
 }
 
 /// The evaluation of a loss in a position with `num_moves` moves.
@@ -68,7 +45,7 @@ pub fn explain_eval(num_moves: isize, side: Color, eval: isize) -> String {
         ),
         ExplainableEval::Loss(moves) => format!(
             "Position is lost:\n{} can win in {} move(s)",
-            side.switch(),
+            side.other(),
             moves
         ),
         ExplainableEval::Undetermined(eval) => format!(

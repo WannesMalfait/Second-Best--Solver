@@ -1,6 +1,6 @@
 use crate::eval;
 use crate::movegen;
-use crate::movegen::GenericMove;
+use crate::position::BitboardMove;
 use crate::position::Position;
 use crate::solver;
 
@@ -73,11 +73,11 @@ fn generate_random_position(
         return None;
     }
 
-    if solver.position.num_moves() > moves_range.end as u8 {
+    if solver.position.num_moves() > moves_range.end {
         // Searching way too deep.
         return None;
     }
-    if solver.position.num_moves() < moves_range.start as u8 {
+    if solver.position.num_moves() < moves_range.start {
         if solver.position.game_over() {
             // We are in a game over state, but not deep enough yet.
             return None;
@@ -90,7 +90,7 @@ fn generate_random_position(
             eval::ExplainableEval::Win(moves) | eval::ExplainableEval::Loss(moves) => {
                 if moves >= depth_range.start as isize {
                     // Position is solvable in given depth.
-                    return Some(solver.position.serialize());
+                    return Some(solver.position.clone().serialize());
                 } else {
                     // Position is too easily solvable.
                     return None;
@@ -109,10 +109,10 @@ fn generate_random_position(
         (move_i, seed) = next_rand(seed);
         let smove = moves[move_i % moves.len()];
         let smove = match smove {
-            GenericMove::SecondBest => continue,
-            GenericMove::Move(smove) => smove,
+            BitboardMove::SecondBest => continue,
+            BitboardMove::StoneMove(smove) => smove,
         };
-        solver.position.make_move(smove);
+        solver.position.make_stone_move(smove);
         if let Some(result) = generate_random_position(solver, moves_range, depth_range, seed) {
             return Some(result);
         }
