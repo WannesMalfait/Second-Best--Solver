@@ -1,6 +1,6 @@
 use crate::eval;
 use crate::movegen;
-use crate::position::Move;
+use crate::movegen::GenericMove;
 use crate::position::Position;
 use std::cmp::max;
 use std::sync::atomic::AtomicBool;
@@ -29,18 +29,12 @@ impl Default for Solver {
     }
 }
 
-#[derive(Clone, Copy)]
-enum PVMove {
-    SecondBest,
-    Move(Move),
-}
-
 /// Stores the Principal Variation at a given ply.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 struct PV {
     // Should technically be two times as big, but 128 moves
     // would be a very big pv.
-    pv: [Option<PVMove>; Position::MAX_MOVES as usize + 1],
+    pv: [Option<GenericMove>; Position::MAX_MOVES as usize + 1],
     pv_len: usize,
 }
 
@@ -54,7 +48,7 @@ impl Default for PV {
 }
 
 impl PV {
-    pub fn update_pv(&mut self, best_move: PVMove, child_pv: &[Option<PVMove>]) {
+    pub fn update_pv(&mut self, best_move: GenericMove, child_pv: &[Option<GenericMove>]) {
         self.pv[0] = Some(best_move);
         for (pv, &child) in self.pv[1..].iter_mut().zip(child_pv) {
             *pv = child;
@@ -75,19 +69,34 @@ impl Solver {
         self.nodes
     }
 
-    fn update_pv(&mut self, pv_index: usize, best_move: PVMove) {
+    fn update_pv(&mut self, pv_index: usize, best_move: GenericMove) {
         let child = self.pv_table[pv_index + 1];
         self.pv_table[pv_index].update_pv(best_move, &child.pv[..child.pv_len]);
     }
 
-    fn update_pv_depth_one(&mut self, pv_index: usize, best_move: PVMove) {
+    fn update_pv_depth_one(&mut self, pv_index: usize, best_move: GenericMove) {
         self.pv_table[pv_index].pv[0] = Some(best_move);
         self.pv_table[pv_index].pv_len = 1;
     }
 
+    fn get_pv_move(&self, pv_index: usize) -> Option<GenericMove> {
+        if pv_index < self.pv_table[0].pv_len {
+            self.pv_table[0].pv[pv_index]
+        } else {
+            None
+        }
+    }
+
     /// Do an alpha beta negamax search on the current position.
     /// Returns the score of the current position.
-    fn negamax(&mut self, depth: usize, pv_index: usize, mut alpha: isize, beta: isize) -> isize {
+    fn negamax(
+        &mut self,
+        leftmost: bool,
+        depth: usize,
+        pv_index: usize,
+        mut alpha: isize,
+        beta: isize,
+    ) -> isize {
         // Don't check this every node, but often often enough.
         if self.nodes % 1024 == 0 && self.abort_search() {
             // Have to stop the search now.
@@ -110,46 +119,40 @@ impl Solver {
         // Worst case is that we lose next move.
         let mut best_score = eval::loss_score(self.position.num_moves() as isize + 1);
 
-        // Look at the child nodes:
+        let pv_move = match leftmost {
+            true => self.get_pv_move(pv_index),
+            false => None,
+        };
 
-        // First try to do "Second Best!"
-        if self.position.can_second_best() {
-            self.position.second_best();
-            best_score = max(
-                best_score,
-                -self.negamax(depth, pv_index + 1, -beta, -alpha),
-            );
-            self.position.undo_second_best();
-            if best_score > alpha {
-                alpha = best_score;
-                self.update_pv(pv_index, PVMove::SecondBest);
-                if alpha >= beta {
-                    return best_score;
+        // Look at the child nodes:
+        let moves = movegen::MoveGen::new(&self.position, pv_move);
+        for (i, smove) in moves.enumerate() {
+            match smove {
+                GenericMove::SecondBest => {
+                    self.position.second_best();
+                    best_score = max(
+                        best_score,
+                        -self.negamax(leftmost && i == 0, depth, pv_index + 1, -beta, -alpha),
+                    );
+                    self.position.undo_second_best();
+                }
+                GenericMove::Move(smove) => {
+                    self.position.make_move(smove);
+                    best_score = max(
+                        best_score,
+                        -self.negamax(leftmost && i == 0, depth - 1, pv_index + 1, -beta, -alpha),
+                    );
+                    self.position.unmake_move();
                 }
             }
-        }
-        if self
-            .position
-            .player_has_alignment(self.position.current_player().switch())
-        {
-            // We can only play "Second Best!".
-            return best_score;
-        }
-        // Now try the other possible moves.
-        let moves = movegen::MoveGen::new(&self.position);
-        for smove in moves {
-            self.position.make_move(smove);
-            best_score = max(
-                best_score,
-                -self.negamax(depth - 1, pv_index + 1, -beta, -alpha),
-            );
-            self.position.unmake_move();
             if best_score > alpha {
                 alpha = best_score;
-                if depth == 1 {
-                    self.update_pv_depth_one(pv_index, PVMove::Move(smove));
+                if depth == 1 && smove != GenericMove::SecondBest {
+                    // Special case here to make sure we don't accidentally pick up
+                    // a tail from a previous iteration.
+                    self.update_pv_depth_one(pv_index, smove);
                 } else {
-                    self.update_pv(pv_index, PVMove::Move(smove));
+                    self.update_pv(pv_index, smove);
                 }
                 if alpha >= beta {
                     break;
@@ -178,7 +181,7 @@ impl Solver {
         let mut eval = 0;
         let start = time::Instant::now();
         for depth in 1..=depth {
-            let new_eval = self.negamax(depth, 0, eval::LOSS, eval::WIN);
+            let new_eval = self.negamax(true, depth, 0, eval::LOSS, eval::WIN);
             if self.abort_search() {
                 return eval;
             }
@@ -193,11 +196,11 @@ impl Solver {
                 );
                 print!("pv");
                 let mut i = 0;
-                while let Some(pv_move) = self.pv_table[0].pv[i] {
+                while let Some(pv_move) = self.get_pv_move(i) {
                     i += 1;
                     match pv_move {
-                        PVMove::SecondBest => print!(" !"),
-                        PVMove::Move(smove) => print!(" {smove}"),
+                        GenericMove::SecondBest => print!(" !"),
+                        GenericMove::Move(smove) => print!(" {smove}"),
                     }
                 }
                 println!();

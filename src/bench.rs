@@ -1,6 +1,6 @@
 use crate::eval;
 use crate::movegen;
-use crate::position::Move;
+use crate::movegen::GenericMove;
 use crate::position::Position;
 use crate::solver;
 
@@ -99,7 +99,7 @@ fn generate_random_position(
         }
     }
     // Generate a new move 'randomly'.
-    let mut moves = movegen::MoveGen::new(&solver.position).collect::<vec::Vec<Move>>();
+    let mut moves = movegen::MoveGen::new(&solver.position, None).collect::<vec::Vec<_>>();
     let mut move_i;
 
     loop {
@@ -108,6 +108,10 @@ fn generate_random_position(
         }
         (move_i, seed) = next_rand(seed);
         let smove = moves[move_i % moves.len()];
+        let smove = match smove {
+            GenericMove::SecondBest => continue,
+            GenericMove::Move(smove) => smove,
+        };
         solver.position.make_move(smove);
         if let Some(result) = generate_random_position(solver, moves_range, depth_range, seed) {
             return Some(result);

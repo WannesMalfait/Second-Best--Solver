@@ -1,4 +1,5 @@
 use crate::position;
+use crate::position::Move;
 use position::Position;
 
 pub struct MoveGen {
@@ -14,6 +15,13 @@ pub struct MoveGen {
     stack_i: u8,
     /// Current stage we are in to generate moves in the second phase.
     adjacent_stage: Adjacent,
+    /// If the opponnent has an alignment.
+    has_alignment: bool,
+    /// The pv-move from a previous iteration.
+    pv_move: Option<GenericMove>,
+    played_pv: bool,
+    /// Did we generate "Second Best!" already?
+    did_second_best: bool,
 }
 
 /// Used to keep track of which moves we generated already.
@@ -23,8 +31,14 @@ enum Adjacent {
     Opposite,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GenericMove {
+    SecondBest,
+    Move(Move),
+}
+
 impl MoveGen {
-    pub fn new(pos: &Position) -> Self {
+    pub fn new(pos: &Position, pv_move: Option<GenericMove>) -> Self {
         let mut our_stacks = [false; Position::NUM_STACKS as usize];
         let mut full_stacks = [false; Position::NUM_STACKS as usize];
         for (stack_i, stack) in pos.board().iter().enumerate() {
@@ -42,45 +56,74 @@ impl MoveGen {
             second_phase: pos.is_second_phase(),
             stack_i: 0,
             adjacent_stage: Adjacent::Left,
+            has_alignment: pos.player_has_alignment(pos.current_player().switch()),
+            pv_move,
+            played_pv: false,
+            did_second_best: !pos.can_second_best(),
         }
     }
 }
 
 impl Iterator for MoveGen {
-    type Item = position::Move;
+    type Item = GenericMove;
     fn next(&mut self) -> Option<Self::Item> {
+        if !self.played_pv && !self.has_alignment {
+            self.played_pv = true;
+            if let Some(pv_move) = self.pv_move {
+                if pv_move == GenericMove::SecondBest {
+                    self.did_second_best = true;
+                }
+                return Some(pv_move);
+            }
+        }
+        if !self.did_second_best {
+            self.did_second_best = true;
+            return Some(GenericMove::SecondBest);
+        }
+        if self.has_alignment {
+            // No legal moves except "Second Best!".
+            return None;
+        }
         if self.stack_i == Position::NUM_STACKS {
             // We have gone over all the possible locations already.
             return None;
         }
         if !self.second_phase {
             let banned_to = self.banned_move.map(|smove| smove.to);
+            let pv_to = match self.pv_move {
+                None => None,
+                Some(GenericMove::SecondBest) => None,
+                Some(GenericMove::Move(smove)) => Some(smove.to),
+            };
             // In the first phase of the game, we just need to find a valid "to" stack.
             while self.stack_i < Position::NUM_STACKS {
-                if !self.full_stacks[self.stack_i as usize] && banned_to != Some(self.stack_i) {
+                if !self.full_stacks[self.stack_i as usize]
+                    && banned_to != Some(self.stack_i)
+                    && pv_to != Some(self.stack_i)
+                {
                     // Make sure that next time we start at the correct stack.
                     self.stack_i += 1;
-                    return Some(position::Move {
+                    return Some(GenericMove::Move(position::Move {
                         from: None,
                         to: self.stack_i - 1,
-                    });
+                    }));
                 }
                 self.stack_i += 1;
             }
             return None;
         }
 
-        let banned_to = self.banned_move.map(|smove| smove.to);
-        let banned_from = match self.banned_move {
-            Some(smove) => smove.from,
+        let pv = match self.pv_move {
             None => None,
+            Some(GenericMove::SecondBest) => None,
+            Some(GenericMove::Move(smove)) => Some(smove),
         };
         // We are in the second phase
         // stack_i is the index of the stack we are moving *to*.
         // each time we check if we can take from the left, right or opposite stack.
         while self.stack_i < Position::NUM_STACKS {
             // Can put something on this stack?
-            if self.full_stacks[self.stack_i as usize] || banned_to == Some(self.stack_i) {
+            if self.full_stacks[self.stack_i as usize] {
                 self.stack_i += 1;
                 continue;
             }
@@ -100,12 +143,19 @@ impl Iterator for MoveGen {
                     Adjacent::Left
                 }
             };
-            if self.our_stacks[from as usize] && banned_from != Some(from) {
+            let smove = position::Move {
+                from: Some(from),
+                to,
+            };
+            if self.our_stacks[from as usize]
+                && Some(smove) != self.banned_move
+                && Some(smove) != pv
+            {
                 // We can make this move.
-                return Some(position::Move {
+                return Some(GenericMove::Move(position::Move {
                     from: Some(from),
                     to,
-                });
+                }));
             }
         }
         None
@@ -114,16 +164,24 @@ impl Iterator for MoveGen {
 
 #[cfg(test)]
 mod tests {
-    use super::MoveGen;
+    use super::*;
     use crate::position;
 
     #[test]
     fn starting_pos() {
         let mut pos = position::Position::default();
-        let moves = MoveGen::new(&pos);
-        assert_eq!(moves.count(), 8);
-        let moves = MoveGen::new(&pos);
+        pos.make_move(position::Move { from: None, to: 0 });
+        pos.second_best();
+        println!("{}", pos.can_second_best());
+        let moves = MoveGen::new(&pos, None);
+        assert_eq!(moves.count(), 7);
+        let moves = MoveGen::new(&pos, None);
         for smove in moves {
+            let smove = match smove {
+                GenericMove::SecondBest => continue,
+                GenericMove::Move(smove) => smove,
+            };
+            println!("{smove}");
             pos.try_make_move(smove).unwrap();
             pos.unmake_move();
         }
@@ -140,16 +198,28 @@ mod tests {
         )
         .unwrap();
         assert!(pos.is_second_phase());
-        let moves = MoveGen::new(&pos);
+        let moves = MoveGen::new(&pos, None);
         for smove in moves {
+            let smove = match smove {
+                GenericMove::SecondBest => continue,
+                GenericMove::Move(smove) => smove,
+            };
             pos.try_make_move(smove).unwrap();
             if !pos.player_has_alignment(pos.current_player().switch()) {
-                let moves = MoveGen::new(&pos);
+                let moves = MoveGen::new(&pos, None);
                 for smove in moves {
+                    let smove = match smove {
+                        GenericMove::SecondBest => continue,
+                        GenericMove::Move(smove) => smove,
+                    };
                     pos.try_make_move(smove).unwrap();
                     if !pos.player_has_alignment(pos.current_player().switch()) {
-                        let moves = MoveGen::new(&pos);
+                        let moves = MoveGen::new(&pos, None);
                         for smove in moves {
+                            let smove = match smove {
+                                GenericMove::SecondBest => continue,
+                                GenericMove::Move(smove) => smove,
+                            };
                             pos.try_make_move(smove).unwrap();
                             pos.unmake_move();
                         }
