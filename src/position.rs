@@ -89,6 +89,7 @@ impl Position {
         | (1 << (Self::STACK_HEIGHT + 1))
         | (1 << ((Self::STACK_HEIGHT + 1) * 2))
         | (1 << ((Self::STACK_HEIGHT + 1) * 3));
+    const COLUMN_MASKS: [Bitboard; Self::NUM_STACKS * 2] = Self::gen_column_masks(0);
 
     /// Create a bitboard with the bottom row set to ones
     /// recursively at compile time.
@@ -98,6 +99,23 @@ impl Position {
         }
         bb |= 1 << ((Self::STACK_HEIGHT + 1) * col);
         Self::bottom(bb, col + 1)
+    }
+
+    const fn gen_column_masks(col: usize) -> [Bitboard; Self::NUM_STACKS * 2] {
+        let mut other_masks = if col == Self::NUM_STACKS - 1 {
+            [0; Self::NUM_STACKS * 2]
+        } else {
+            Self::gen_column_masks(col + 1)
+        };
+        // Substracting 1 from 1000 gives 0111.
+        // We can then shift that to the correct column.
+        let mask = ((1 << Self::STACK_HEIGHT) - 1) << ((Self::STACK_HEIGHT + 1) * col)
+        // We have two copies of the column in our bitboards.
+        | (((1 << Self::STACK_HEIGHT) - 1)
+            << ((Self::STACK_HEIGHT + 1) * (col + Self::NUM_STACKS)));
+        other_masks[col] = mask;
+        other_masks[col + Self::NUM_STACKS] = mask;
+        other_masks
     }
 }
 
@@ -219,8 +237,6 @@ impl PlayerMove {
     }
 }
 
-type Stone = Option<Color>;
-
 impl BitboardMove {
     /// The column that the single bit set in the bitboard is in.
     fn column_of_bit(bb: Bitboard) -> usize {
@@ -229,8 +245,7 @@ impl BitboardMove {
                 return col;
             }
         }
-        Position::print_bb(bb);
-        unreachable!("At least one of the bits should have been set!");
+        unreachable!("Some bit should have been set!")
     }
 
     pub fn to_player_move(self, pos: &Position) -> PlayerMove {
@@ -271,7 +286,7 @@ pub enum MoveFailed {
 }
 
 impl Position {
-    fn print_bb(bb: Bitboard) {
+    pub fn print_bb(bb: Bitboard) {
         for row in (0..(Self::STACK_HEIGHT + 1)).rev() {
             for col in 0..(Self::NUM_STACKS * 2) {
                 let mask = 1 << (col * (Self::STACK_HEIGHT + 1) + row);
@@ -321,19 +336,13 @@ impl Position {
     }
 
     /// A mask with all the spots marked in the given column.
-    fn column_mask(col: usize) -> Bitboard {
-        // Substracting 1 from 1000 gives 0111.
-        // We can then shift that to the correct column.
-        ((1 << Self::STACK_HEIGHT) - 1) << ((Self::STACK_HEIGHT + 1) * col)
-        // We have two copies of the column in our bitboards.
-            | ((1 << Self::STACK_HEIGHT) - 1)
-                << ((Self::STACK_HEIGHT + 1) * (col + Self::NUM_STACKS))
+    pub fn column_mask(col: usize) -> Bitboard {
+        Self::COLUMN_MASKS[col]
     }
 
     /// A mask with a one at the bottom of the given column.
     fn column_bottom_mask(col: usize) -> Bitboard {
         1 << ((Self::STACK_HEIGHT + 1) * col)
-            | 1 << ((Self::STACK_HEIGHT + 1) * (col + Self::NUM_STACKS))
     }
 
     /// Bitboard with a 1 on the bottom of each stack
@@ -347,15 +356,31 @@ impl Position {
         // Only look at stones on top of their stack.
         let player_stones = player_stones & self.top_spots();
         // Shift everything to the bottom row.
-        return (player_stones & Self::BOTTOM)
+        (player_stones & Self::BOTTOM)
             | ((player_stones >> 1) & Self::BOTTOM)
-            | ((player_stones >> 2) & Self::BOTTOM);
+            | ((player_stones >> 2) & Self::BOTTOM)
     }
 
-    /// Get the board.
-    // pub fn board(&self) -> &[[Stone; Self::STACK_HEIGHT as usize]; Self::NUM_STACKS as usize] {
-    //     &self.board
-    // }
+    /// Bitboard with a 1 set on the top of every stack controlled
+    /// by the given player.
+    pub fn from_spots(&self, us: bool) -> Bitboard {
+        let controlled_stacks = self.controlled_stacks(us);
+        let column_masks = (Self::BOTTOM << Self::STACK_HEIGHT) - controlled_stacks;
+        self.top_spots() & column_masks
+    }
+
+    /// Bitboard with a 1 set on the bottom of the stacks which are still free.
+    pub fn free_columns(&self) -> Bitboard {
+        Self::BOTTOM & !(self.played_spots >> 2)
+    }
+
+    // Bitboard with a 1 set on every playable "to" spot.
+    pub fn free_spots(&self) -> Bitboard {
+        let free_cols = self.free_columns();
+        // Masks of the full columns.
+        let column_masks = (Self::BOTTOM << Self::STACK_HEIGHT) - free_cols;
+        self.top_top_spots() & column_masks
+    }
 
     /// The current player to move.
     pub fn current_player(&self) -> Color {
@@ -381,12 +406,6 @@ impl Position {
     pub fn is_second_phase(&self) -> bool {
         self.num_moves >= 2 * Self::STONES_PER_PLAYER
     }
-
-    /// The height of the given stack.
-    // #[inline]
-    // pub fn stack_height(&self, stack: u8) -> u8 {
-    //     self.stack_heights[stack as usize]
-    // }
 
     /// Check if the "to" spot is adjacent or opposite to the "from" spot.
     fn valid_adjacent(from: usize, to: usize) -> bool {
@@ -493,6 +512,15 @@ impl Position {
         }
     }
 
+    // Unmake the last stone move or "Second Best!".
+    pub fn unmake_move(&mut self) {
+        if self.banned_move().is_some() {
+            self.undo_second_best();
+        } else {
+            self.unmake_stone_move();
+        }
+    }
+
     /// Convenience function for testing mostly.
     pub fn make_phase_one_move(&mut self, to: usize) {
         self.make_stone_move(self.phase_one_stone_move(to))
@@ -508,11 +536,11 @@ impl Position {
 
     /// Unmake the last move played.
     /// Returns the move that was undone.
-    pub fn unmake_move(&mut self) -> Bitboard {
+    pub fn unmake_stone_move(&mut self) -> Bitboard {
         if self.num_moves == 0 {
             unreachable!("Logic error in the program");
         }
-        let Some(last_move) = self.move_history[self.num_moves as usize] else {
+        let Some(last_move) = self.move_history[self.num_moves] else {
             unreachable!("There should be a move, because we have played that many moves.")
         };
         self.move_history[self.num_moves] = None;
@@ -538,14 +566,14 @@ impl Position {
     /// Opponent called "Second Best!"
     /// This should only be called if `can_second_best()` is true.
     pub fn second_best(&mut self) {
-        let last_move = self.unmake_move();
+        let last_move = self.unmake_stone_move();
         self.banned_moves[self.num_moves + 1] = Some(last_move);
     }
 
     /// Undo a "Second Best!" call.
     /// Should only be called if there is a banned move in the current position.
     pub fn undo_second_best(&mut self) {
-        let banned_move = self.banned_moves[self.num_moves + 1].unwrap();
+        let banned_move = self.banned_move().unwrap();
         self.banned_moves[self.num_moves + 1] = None;
         self.make_stone_move(banned_move);
     }
@@ -579,7 +607,7 @@ impl Position {
         let mut moves = std::vec::Vec::<String>::new();
         for move_i in (0..self.num_moves).rev() {
             let smove = self.move_history[move_i + 1].unwrap();
-            self.unmake_move();
+            self.unmake_stone_move();
             let s = self.stone_move_to_string(smove);
             moves.push(s);
             if let Some(banned_move) = self.banned_moves[move_i + 1] {
@@ -638,7 +666,7 @@ impl Position {
             return false;
         }
         // Free columns are those where the top spot is not played.
-        let free_columns = !((Self::BOTTOM << 2) & self.played_spots);
+        let free_columns = self.free_columns();
         let our_columns = self.controlled_stacks(true);
         if our_columns == 0 {
             // No controlled columns means no moves.
@@ -997,7 +1025,7 @@ mod tests {
         pos.show();
         // No more second best allowed, and opponent has an alignment.
         assert!(pos.game_over());
-        pos.unmake_move();
+        pos.unmake_stone_move();
         pos.show();
 
         pos.parse_and_play_moves(
@@ -1047,16 +1075,16 @@ mod tests {
         pos.make_phase_one_move(0);
         pos.show();
         assert!(!pos.can_second_best());
-        pos.unmake_move();
+        pos.unmake_stone_move();
         pos.show();
         assert!(!pos.can_second_best());
         pos.make_phase_one_move(3);
         pos.show();
         assert!(!pos.can_second_best());
-        pos.unmake_move();
+        pos.unmake_stone_move();
         pos.show();
         assert!(!pos.can_second_best());
-        pos.unmake_move();
+        pos.unmake_stone_move();
         assert!(pos.can_second_best());
         pos.show();
         pos.make_phase_one_move(5);

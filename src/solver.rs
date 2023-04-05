@@ -142,7 +142,7 @@ impl Solver {
                         best_score,
                         -self.negamax(leftmost && i == 0, depth - 1, pv_index + 1, -beta, -alpha),
                     );
-                    self.position.unmake_move();
+                    self.position.unmake_stone_move();
                 }
             }
             if best_score > alpha {

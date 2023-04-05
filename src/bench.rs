@@ -117,7 +117,7 @@ fn generate_random_position(
             return Some(result);
         }
         // Didn't work, try another move.
-        solver.position.unmake_move();
+        solver.position.unmake_stone_move();
         moves.swap_remove(move_i % moves.len());
     }
 }

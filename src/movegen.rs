@@ -4,12 +4,16 @@ use position::BitboardMove;
 use position::Position;
 
 pub struct MoveGen {
+    /// Possible "to" spots.
+    free_to_spots: Bitboard,
+    /// Possible "from" spots. These are the spots on top of stacks we control.
+    possible_from_spots: Bitboard,
     /// Potential move that we are not allowed to play anymore.
     banned_move: Option<Bitboard>,
     /// Are we in the second phase of the game?
     second_phase: bool,
     /// Current stack we are generating moves to.
-    stack_i: u8,
+    stack_i: usize,
     /// Current stage we are in to generate moves in the second phase.
     adjacent_stage: Adjacent,
     /// If the opponnent has an alignment.
@@ -22,6 +26,7 @@ pub struct MoveGen {
 }
 
 /// Used to keep track of which moves we generated already.
+#[derive(Debug)]
 enum Adjacent {
     Left,
     Right,
@@ -30,7 +35,10 @@ enum Adjacent {
 
 impl MoveGen {
     pub fn new(pos: &Position, pv_move: Option<BitboardMove>) -> Self {
+        // Generating moves..
         Self {
+            free_to_spots: pos.free_spots(),
+            possible_from_spots: pos.from_spots(true),
             banned_move: pos.banned_move(),
             second_phase: pos.is_second_phase(),
             stack_i: 0,
@@ -46,7 +54,77 @@ impl MoveGen {
 impl Iterator for MoveGen {
     type Item = BitboardMove;
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        if !self.played_pv {
+            self.played_pv = true;
+            if let Some(pv_move) = self.pv_move {
+                if pv_move == BitboardMove::SecondBest {
+                    self.did_second_best = true;
+                }
+                return Some(pv_move);
+            }
+        }
+        if !self.did_second_best {
+            self.did_second_best = true;
+            return Some(BitboardMove::SecondBest);
+        }
+        if self.stack_i == Position::NUM_STACKS {
+            // All the stacks have been done.
+            return None;
+        }
+        if self.has_alignment {
+            // Second Best is the only legal move.
+            return None;
+        }
+        if !self.second_phase {
+            while self.stack_i < Position::NUM_STACKS {
+                let candidate = Position::column_mask(self.stack_i) & self.free_to_spots;
+                self.stack_i += 1;
+                if candidate != 0 && self.banned_move != Some(candidate) {
+                    let candidate = Some(BitboardMove::StoneMove(candidate));
+                    if candidate != self.pv_move {
+                        return candidate;
+                    }
+                }
+            }
+        } else {
+            while self.stack_i < Position::NUM_STACKS {
+                let to = Position::column_mask(self.stack_i) & self.free_to_spots;
+                if to == 0 {
+                    // This stack was not free.
+                    self.stack_i += 1;
+                    continue;
+                }
+                let from = match self.adjacent_stage {
+                    Adjacent::Left => {
+                        self.adjacent_stage = Adjacent::Right;
+                        Position::column_mask(self.stack_i + Position::LEFT)
+                            & self.possible_from_spots
+                    }
+                    Adjacent::Right => {
+                        self.adjacent_stage = Adjacent::Opposite;
+                        Position::column_mask(self.stack_i + Position::RIGHT)
+                            & self.possible_from_spots
+                    }
+                    Adjacent::Opposite => {
+                        self.adjacent_stage = Adjacent::Left;
+                        self.stack_i += 1;
+                        Position::column_mask(self.stack_i - 1 + Position::OPPOSITE)
+                            & self.possible_from_spots
+                    }
+                };
+                if from != 0 {
+                    let candidate = to | from;
+                    if self.banned_move == Some(candidate) {
+                        continue;
+                    }
+                    let candidate = Some(BitboardMove::StoneMove(to | from));
+                    if candidate != self.pv_move {
+                        return candidate;
+                    }
+                }
+            }
+        }
+        None
     }
 }
 
@@ -67,7 +145,7 @@ mod tests {
         for bmove in moves {
             let pmove = bmove.to_player_move(&pos);
             pos.try_make_move(pmove).unwrap();
-            pos.unmake_move();
+            pos.unmake_stone_move();
         }
     }
 
