@@ -31,9 +31,9 @@ pub struct MoveGen {
 #[derive(PartialEq, Eq)]
 enum Stage {
     PvMove,
-    SecondBest,
     VerticalAlignments,
     GoodToMoves,
+    SecondBest,
     BadToMoves,
 }
 
@@ -85,10 +85,10 @@ impl Iterator for MoveGen {
     type Item = BitboardMove;
     fn next(&mut self) -> Option<Self::Item> {
         if self.stage == Stage::PvMove {
-            self.stage = Stage::SecondBest;
+            self.stage = Stage::VerticalAlignments;
             if let Some(pv_move) = self.pv_move {
                 match pv_move {
-                    BitboardMove::SecondBest => self.stage = Stage::GoodToMoves,
+                    BitboardMove::SecondBest => self.can_second_best = false,
                     BitboardMove::StoneMove(smove) => {
                         if !self.second_phase {
                             // Remove the pv_move from the possible moves.
@@ -101,12 +101,6 @@ impl Iterator for MoveGen {
                     }
                 }
                 return Some(pv_move);
-            }
-        }
-        if self.stage == Stage::SecondBest {
-            self.stage = Stage::VerticalAlignments;
-            if self.can_second_best {
-                return Some(BitboardMove::SecondBest);
             }
         }
         if self.stage == Stage::VerticalAlignments {
@@ -125,7 +119,13 @@ impl Iterator for MoveGen {
                 }
             }
             self.stack_i = 0;
+            self.stage = Stage::SecondBest;
+        }
+        if self.stage == Stage::SecondBest {
             self.stage = Stage::BadToMoves;
+            if self.can_second_best {
+                return Some(BitboardMove::SecondBest);
+            }
         }
         if self.stage == Stage::BadToMoves {
             return self.next_stone_move(self.bad_to_spots);
