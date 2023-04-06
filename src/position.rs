@@ -376,17 +376,28 @@ impl Position {
             | ((player_stones >> 2) & Self::BOTTOM)
     }
 
+    /// Bitboard with columns set to 1 if the given player
+    /// controls that column.
+    pub fn controlled_columns(&self, us: bool) -> Bitboard {
+        let controlled_stacks = self.controlled_stacks(us);
+        (Self::BOTTOM << Self::STACK_HEIGHT) - controlled_stacks
+    }
+
     /// Bitboard with a 1 set on the top of every stack controlled
     /// by the given player.
     pub fn from_spots(&self, us: bool) -> Bitboard {
-        let controlled_stacks = self.controlled_stacks(us);
-        let column_masks = (Self::BOTTOM << Self::STACK_HEIGHT) - controlled_stacks;
-        self.top_spots() & column_masks
+        self.top_spots() & self.controlled_columns(us)
     }
 
     /// Bitboard with a 1 set on the bottom of the stacks which are still free.
     pub fn free_columns(&self) -> Bitboard {
         Self::BOTTOM & !(self.played_spots >> 2)
+    }
+
+    /// Bitboard with a 1 set on every free spot that would give us an alignment.
+    pub fn vertical_alignment_spots(&self) -> Bitboard {
+        // The free spots where we have two stones beneath it.
+        (self.our_spots << 1) & (self.our_spots << 2) & self.free_spots()
     }
 
     /// The current player to move.
