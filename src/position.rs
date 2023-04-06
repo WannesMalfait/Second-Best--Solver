@@ -376,12 +376,17 @@ impl Position {
             | ((player_stones >> 2) & Self::BOTTOM)
     }
 
+    /// Bitboard with columns set to 1 if the given player
+    /// controls that column.
+    pub fn controlled_columns(&self, us: bool) -> Bitboard {
+        let controlled_stacks = self.controlled_stacks(us);
+        (Self::BOTTOM << Self::STACK_HEIGHT) - controlled_stacks
+    }
+
     /// Bitboard with a 1 set on the top of every stack controlled
     /// by the given player.
     pub fn from_spots(&self, us: bool) -> Bitboard {
-        let controlled_stacks = self.controlled_stacks(us);
-        let column_masks = (Self::BOTTOM << Self::STACK_HEIGHT) - controlled_stacks;
-        self.top_spots() & column_masks
+        self.top_spots() & self.controlled_columns(us)
     }
 
     /// Bitboard with a 1 set on the bottom of the stacks which are still free.
