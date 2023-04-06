@@ -394,6 +394,12 @@ impl Position {
         Self::BOTTOM & !(self.played_spots >> 2)
     }
 
+    /// Bitboard with a 1 set on every free spot that would give us an alignment.
+    pub fn vertical_alignment_spots(&self) -> Bitboard {
+        // The free spots where we have two stones beneath it.
+        (self.our_spots << 1) & (self.our_spots << 2) & self.free_spots()
+    }
+
     /// The current player to move.
     pub fn current_player(&self) -> Color {
         match self.num_moves % 2 {

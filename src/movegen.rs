@@ -4,6 +4,8 @@ use position::BitboardMove;
 use position::Position;
 
 pub struct MoveGen {
+    /// Spots which give us a vertical alignment.
+    alignment_spots: Bitboard,
     /// Possible "to" spots not yet controlled by us.
     good_to_spots: Bitboard,
     /// Spots already controlled by us.
@@ -30,6 +32,7 @@ pub struct MoveGen {
 enum Stage {
     PvMove,
     SecondBest,
+    VerticalAlignments,
     GoodToMoves,
     BadToMoves,
 }
@@ -47,18 +50,23 @@ impl MoveGen {
         let banned_move = pos.banned_move();
         let second_phase = pos.is_second_phase();
         let mut free_to_spots = pos.free_spots();
+        let mut alignment_spots = pos.vertical_alignment_spots();
         if !second_phase {
             if let Some(banned_move) = banned_move {
                 // Remove the banned move from the possible moves.
                 free_to_spots &= !banned_move;
+                alignment_spots &= !banned_move;
             }
         }
         let possible_from_spots = pos.from_spots(true);
+        // Ensure we don't make the same moves twice.
+        free_to_spots &= !alignment_spots;
         // A 1 on the top of every stack we control.
         let bad_spots = possible_from_spots << 1;
         let good_to_spots = free_to_spots & !bad_spots;
         let bad_to_spots = free_to_spots & bad_spots;
         Self {
+            alignment_spots,
             good_to_spots,
             bad_to_spots,
             possible_from_spots,
@@ -84,6 +92,7 @@ impl Iterator for MoveGen {
                     BitboardMove::StoneMove(smove) => {
                         if !self.second_phase {
                             // Remove the pv_move from the possible moves.
+                            self.alignment_spots &= !smove;
                             self.good_to_spots &= !smove;
                             self.bad_to_spots &= !smove;
                         }
@@ -95,14 +104,25 @@ impl Iterator for MoveGen {
             }
         }
         if self.stage == Stage::SecondBest {
-            self.stage = Stage::GoodToMoves;
+            self.stage = Stage::VerticalAlignments;
             if self.can_second_best {
                 return Some(BitboardMove::SecondBest);
             }
         }
+        if self.stage == Stage::VerticalAlignments {
+            if self.alignment_spots != 0 {
+                if let Some(bmove) = self.next_stone_move(self.alignment_spots) {
+                    return Some(bmove);
+                }
+            }
+            self.stack_i = 0;
+            self.stage = Stage::GoodToMoves;
+        }
         if self.stage == Stage::GoodToMoves {
-            if let Some(bmove) = self.next_stone_move(self.good_to_spots) {
-                return Some(bmove);
+            if self.good_to_spots != 0 {
+                if let Some(bmove) = self.next_stone_move(self.good_to_spots) {
+                    return Some(bmove);
+                }
             }
             self.stack_i = 0;
             self.stage = Stage::BadToMoves;
