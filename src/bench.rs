@@ -1,6 +1,7 @@
 use crate::eval;
 use crate::movegen;
 use crate::position::BitboardMove;
+use crate::position::GameStatus;
 use crate::position::Position;
 use crate::solver;
 
@@ -78,7 +79,7 @@ fn generate_random_position(
         return None;
     }
     if solver.position.num_moves() < moves_range.start {
-        if solver.position.game_over() {
+        if solver.position.game_status() != GameStatus::OnGoing {
             // We are in a game over state, but not deep enough yet.
             return None;
         }
@@ -109,7 +110,10 @@ fn generate_random_position(
         (move_i, seed) = next_rand(seed);
         let smove = moves[move_i % moves.len()];
         let smove = match smove {
-            BitboardMove::SecondBest => continue,
+            BitboardMove::SecondBest => {
+                moves.swap_remove(move_i % moves.len());
+                continue;
+            }
             BitboardMove::StoneMove(smove) => smove,
         };
         solver.position.make_stone_move(smove);
@@ -171,42 +175,48 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
             let abort = abort.clone();
             let main_thread = thread_id == 0;
 
-            thread_handlers.push(std::thread::spawn(move || {
-                let mut solver = solver::Solver::new(abort);
-                let mut total_nodes = 0;
-                let mut total_time = 0;
-                for (i, position) in thread_positions.iter().enumerate() {
-                    if main_thread {
-                        print!(
-                            "\rRunning benchmark: {:.2}%",
-                            (i as f64 + 1.0) / thread_positions.len() as f64 * 100.
-                        );
-                        io::stdout().flush().unwrap();
-                    }
-                    solver.position = Position::default();
-                    let moves = position.split_whitespace().map(|s| s.to_string()).collect();
-                    solver.position.parse_and_play_moves(moves).unwrap();
-                    let now = std::time::Instant::now();
-                    solver.search(max_depth);
-                    if solver.abort_search() {
-                        break;
-                    }
-                    total_time += now.elapsed().as_micros();
-                    total_nodes += solver.nodes();
-                }
-                if main_thread {
-                    // Add a newline after the progress print
-                    println!("\nWaiting for all threads to finish...\n");
-                }
+            thread_handlers.push(
+                std::thread::Builder::new()
+                    .name(thread_id.to_string())
+                    .stack_size(5_000_000)
+                    .spawn(move || {
+                        let mut solver = solver::Solver::new(abort);
+                        let mut total_nodes = 0;
+                        let mut total_time = 0;
+                        for (i, position) in thread_positions.iter().enumerate() {
+                            if main_thread {
+                                print!(
+                                    "\rRunning benchmark: {:.2}%",
+                                    (i as f64 + 1.0) / thread_positions.len() as f64 * 100.
+                                );
+                                io::stdout().flush().unwrap();
+                            }
+                            solver.position = Position::default();
+                            let moves =
+                                position.split_whitespace().map(|s| s.to_string()).collect();
+                            solver.position.parse_and_play_moves(moves).unwrap();
+                            let now = std::time::Instant::now();
+                            solver.search(max_depth);
+                            if solver.abort_search() {
+                                break;
+                            }
+                            total_time += now.elapsed().as_micros();
+                            total_nodes += solver.nodes();
+                        }
+                        if main_thread {
+                            // Add a newline after the progress print
+                            println!("\nWaiting for all threads to finish...\n");
+                        }
 
-                (total_nodes, total_time)
-            }))
+                        (total_nodes, total_time)
+                    }),
+            )
         }
 
         let mut total_nodes = 0;
         let mut total_time = 0;
         for handler in thread_handlers {
-            let (nodes, time) = handler.join().unwrap();
+            let (nodes, time) = handler?.join().unwrap();
             total_nodes += nodes;
             total_time += time;
         }

@@ -159,6 +159,16 @@ impl Display for Color {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum GameStatus {
+    /// Current player has won.
+    Win,
+    /// Current player has lost.
+    Loss,
+    /// The game is not yet over.
+    OnGoing,
+}
+
 /// A type of move a player can make.
 /// In case of a stone move, the Bitboard holds the
 /// following information:
@@ -258,10 +268,15 @@ impl BitboardMove {
                 } else {
                     Some(Self::column_of_bit(from_spot))
                 };
-                let to = Self::column_of_bit(smove & pos.top_top_spots());
+                let to_spot = smove & pos.free_spots();
+                let to = Self::column_of_bit(to_spot);
                 PlayerMove::StoneMove { from, to }
             }
         }
+    }
+
+    pub fn to_string(self, pos: &Position) -> String {
+        self.to_player_move(pos).to_string()
     }
 }
 
@@ -311,11 +326,11 @@ impl Position {
     }
 
     fn phase_one_stone_move(&self, to: usize) -> Bitboard {
-        Position::column_mask(to) & self.top_top_spots()
+        Position::column_mask(to) & self.free_spots()
     }
 
     /// The empty spots just on top of the stack.
-    fn top_top_spots(&self) -> Bitboard {
+    pub fn free_spots(&self) -> Bitboard {
         // Why does this work?
         // Take one of the columns in the bitboard.
         // Laying it out horizontally we get something
@@ -374,14 +389,6 @@ impl Position {
         Self::BOTTOM & !(self.played_spots >> 2)
     }
 
-    // Bitboard with a 1 set on every playable "to" spot.
-    pub fn free_spots(&self) -> Bitboard {
-        let free_cols = self.free_columns();
-        // Masks of the full columns.
-        let column_masks = (Self::BOTTOM << Self::STACK_HEIGHT) - free_cols;
-        self.top_top_spots() & column_masks
-    }
-
     /// The current player to move.
     pub fn current_player(&self) -> Color {
         match self.num_moves % 2 {
@@ -422,6 +429,11 @@ impl Position {
 
     /// Make the move if it is valid, otherwise return why it wasn't valid.
     pub fn try_make_move(&mut self, pmove: PlayerMove) -> Result<(), MoveFailed> {
+        if self.has_alignment(true) {
+            // We have an alignment in this position,
+            // so the game is over.
+            return Err(MoveFailed::PositionWinning);
+        }
         let (from, to) = match pmove {
             PlayerMove::SecondBest => {
                 if !self.can_second_best() {
@@ -433,9 +445,6 @@ impl Position {
             }
             PlayerMove::StoneMove { from, to } => (from, to),
         };
-        if self.has_alignment(false) {
-            return Err(MoveFailed::PositionWinning);
-        }
         if self.is_second_phase() {
             let Some(from) = from else {
                 return Err(MoveFailed::MissingFromSpot);
@@ -463,9 +472,7 @@ impl Position {
             // We are moving a stone to the "to" spot, so:
             // 1. The "to" spot should be "adjacent" to the "from" spot
             // 2. The stack at the "to" spot should not be full.
-            if !Self::valid_adjacent(from, to)
-                || 0 == (self.top_top_spots() & Self::column_mask(to))
-            {
+            if !Self::valid_adjacent(from, to) || 0 == (self.free_spots() & Self::column_mask(to)) {
                 return Err(MoveFailed::InvalidToSpot);
             }
 
@@ -491,7 +498,7 @@ impl Position {
 
         // We are moving a stone to the "to" spot, so:
         // the stack at the "to" spot should not be full.
-        if 0 == (self.top_top_spots() & Self::column_mask(to)) {
+        if 0 == (self.free_spots() & Self::column_mask(to)) {
             return Err(MoveFailed::InvalidToSpot);
         }
         let smove = self.stone_move(None, to);
@@ -654,23 +661,28 @@ impl Position {
     }
 
     /// Returns true if the current player is lost.
-    pub fn game_over(&self) -> bool {
-        if self.can_second_best() {
-            return false;
+    pub fn game_status(&self) -> GameStatus {
+        if self.has_alignment(true) {
+            // Our turn, and we have an alignment.
+            return GameStatus::Win;
         }
-        if self.has_alignment(false) {
-            return true;
-        }
-        // Check if the current player has no legal moves.
+        // From now on we just check if we are lost (this turn), this can
+        // only happen if we have no legal moves.
+        // Technically it is possible for our opponent to have
+        // an alignment that we can't refute, but that is already searching
+        // at an extra depth.
         if !self.is_second_phase() {
-            return false;
+            return GameStatus::OnGoing;
+        }
+        if self.can_second_best() {
+            return GameStatus::OnGoing;
         }
         // Free columns are those where the top spot is not played.
         let free_columns = self.free_columns();
         let our_columns = self.controlled_stacks(true);
         if our_columns == 0 {
             // No controlled columns means no moves.
-            return true;
+            return GameStatus::Loss;
         }
 
         let left = Self::column_bottom_mask(Self::LEFT);
@@ -685,14 +697,14 @@ impl Position {
             }
             if (possible_to & free_columns) != 0 {
                 // Found a possible move.
-                return true;
+                return GameStatus::OnGoing;
             }
             // Move to the next column.
             possible_to <<= Self::STACK_HEIGHT + 1;
         }
 
-        // No legal move, so the game is over;
-        true
+        // No legal move, so the game is over.
+        GameStatus::Loss
     }
 
     /// Display the current state of the board.
@@ -835,7 +847,7 @@ impl Position {
                 Color::White => "white's (O)",
             }
         );
-        if let Some(banned_move) = self.banned_moves[self.num_moves + 1] {
+        if let Some(banned_move) = self.banned_move() {
             let banned_move = BitboardMove::StoneMove(banned_move).to_player_move(self);
             println!("Banned move: {}", banned_move);
         }
@@ -1003,7 +1015,7 @@ mod tests {
     #[test]
     fn game_over() {
         let mut pos = Position::default();
-        assert!(!pos.game_over());
+        assert_eq!(pos.game_status(), GameStatus::OnGoing);
         pos.parse_and_play_moves(
             "0 1 0 1 0"
                 .split_whitespace()
@@ -1013,7 +1025,7 @@ mod tests {
         .unwrap();
         pos.show();
         // Can still call second best.
-        assert!(!pos.game_over());
+        assert_eq!(pos.game_status(), GameStatus::OnGoing);
         pos.second_best();
         pos.parse_and_play_moves(
             "1 0 ! 7 7 ! 0"
@@ -1022,9 +1034,11 @@ mod tests {
                 .collect(),
         )
         .unwrap();
+        pos.make_phase_one_move(7);
         pos.show();
-        // No more second best allowed, and opponent has an alignment.
-        assert!(pos.game_over());
+        // Our turn and we have an alignment.
+        assert_eq!(pos.game_status(), GameStatus::Win);
+        pos.unmake_stone_move();
         pos.unmake_stone_move();
         pos.show();
 
@@ -1036,11 +1050,11 @@ mod tests {
         )
         .unwrap();
         pos.show();
-        assert!(!pos.game_over());
+        assert_eq!(pos.game_status(), GameStatus::OnGoing);
         pos.make_phase_one_move(5);
         pos.make_phase_one_move(5);
         pos.make_phase_one_move(4);
-        assert!(!pos.game_over());
+        assert_eq!(pos.game_status(), GameStatus::OnGoing);
         pos.show();
         pos.try_make_move(PlayerMove::StoneMove {
             from: Some(7),
@@ -1048,7 +1062,7 @@ mod tests {
         })
         .unwrap();
         pos.show();
-        assert!(!pos.game_over());
+        assert_eq!(pos.game_status(), GameStatus::OnGoing);
         pos.second_best();
         pos.try_make_move(PlayerMove::StoneMove {
             from: Some(0),
@@ -1057,7 +1071,7 @@ mod tests {
         .unwrap();
         pos.show();
         // No legal moves.
-        assert!(pos.game_over());
+        assert_eq!(pos.game_status(), GameStatus::Loss);
     }
 
     #[test]

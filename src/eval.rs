@@ -16,13 +16,29 @@ pub enum ExplainableEval {
 pub fn static_eval(pos: &Position) -> isize {
     // For now just count how many stacks are controlled by each player.
     let mut score = 0;
-    todo!("Write evaluation function");
+    score += pos.controlled_stacks(true).count_ones() as isize;
+    score -= pos.controlled_stacks(false).count_ones() as isize;
+    // Since the bitboards store two copies of the board,
+    // we need to divide by 2.
+    score /= 2;
+    if pos.has_alignment(false) {
+        score -= 10;
+    } else if pos.has_alignment(true) {
+        score += 10;
+    }
+    score
 }
 
 /// The evaluation of a loss in a position with `num_moves` moves.
 #[inline]
 pub fn loss_score(num_moves: isize) -> isize {
     LOSS + num_moves
+}
+
+/// The evaluation of a win in a position with `num_moves` moves.
+#[inline]
+pub fn win_score(num_moves: isize) -> isize {
+    WIN - num_moves
 }
 
 /// Turn the evaluation into a more digestible enum.

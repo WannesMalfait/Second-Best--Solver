@@ -1,6 +1,7 @@
 use crate::eval;
 use crate::movegen;
 use crate::position::BitboardMove;
+use crate::position::GameStatus;
 use crate::position::Position;
 use std::cmp::max;
 use std::sync::atomic::AtomicBool;
@@ -14,7 +15,7 @@ pub struct Solver {
     abort: Arc<AtomicBool>,
     /// If true, don't print anything to stdout.
     quiet: bool,
-    pv_table: [PV; Position::MAX_MOVES as usize + 1],
+    pv_table: [PV; Position::MAX_MOVES + 1],
 }
 
 impl Default for Solver {
@@ -24,7 +25,7 @@ impl Default for Solver {
             nodes: 0,
             abort: Arc::new(AtomicBool::new(false)),
             quiet: true,
-            pv_table: [PV::default(); Position::MAX_MOVES as usize + 1],
+            pv_table: [PV::default(); Position::MAX_MOVES + 1],
         }
     }
 }
@@ -34,14 +35,14 @@ impl Default for Solver {
 struct PV {
     // Should technically be two times as big, but 128 moves
     // would be a very big pv.
-    pv: [Option<BitboardMove>; Position::MAX_MOVES as usize + 1],
+    pv: [Option<BitboardMove>; Position::MAX_MOVES + 1],
     pv_len: usize,
 }
 
 impl Default for PV {
     fn default() -> Self {
         Self {
-            pv: [None; Position::MAX_MOVES as usize + 1],
+            pv: [None; Position::MAX_MOVES + 1],
             pv_len: 0,
         }
     }
@@ -104,10 +105,11 @@ impl Solver {
         }
 
         self.nodes += 1;
-        if self.position.game_over() {
-            // The position is lost, so return the lowest possible score.
-            return eval::loss_score(self.position.num_moves() as isize);
-        }
+        match self.position.game_status() {
+            GameStatus::Loss => return eval::loss_score(self.position.num_moves() as isize),
+            GameStatus::Win => return eval::win_score(self.position.num_moves() as isize),
+            GameStatus::OnGoing => (),
+        };
 
         if depth == 0 {
             // Return a static evaluation of the position.
@@ -126,8 +128,8 @@ impl Solver {
 
         // Look at the child nodes:
         let moves = movegen::MoveGen::new(&self.position, pv_move);
-        for (i, smove) in moves.enumerate() {
-            match smove {
+        for (i, bmove) in moves.enumerate() {
+            match bmove {
                 BitboardMove::SecondBest => {
                     self.position.second_best();
                     best_score = max(
@@ -137,6 +139,10 @@ impl Solver {
                     self.position.undo_second_best();
                 }
                 BitboardMove::StoneMove(smove) => {
+                    // Enable for testing purposes.
+                    // self.position
+                    //     .try_make_move(bmove.to_player_move(&self.position))
+                    //     .unwrap();
                     self.position.make_stone_move(smove);
                     best_score = max(
                         best_score,
@@ -147,12 +153,12 @@ impl Solver {
             }
             if best_score > alpha {
                 alpha = best_score;
-                if depth == 1 && smove != BitboardMove::SecondBest {
+                if depth == 1 && bmove != BitboardMove::SecondBest {
                     // Special case here to make sure we don't accidentally pick up
                     // a tail from a previous iteration.
-                    self.update_pv_depth_one(pv_index, smove);
+                    self.update_pv_depth_one(pv_index, bmove);
                 } else {
-                    self.update_pv(pv_index, smove);
+                    self.update_pv(pv_index, bmove);
                 }
                 if alpha >= beta {
                     break;
@@ -177,7 +183,7 @@ impl Solver {
 
     pub fn search(&mut self, depth: usize) -> isize {
         self.nodes = 0;
-        self.pv_table = [PV::default(); Position::MAX_MOVES as usize + 1];
+        self.pv_table = [PV::default(); Position::MAX_MOVES + 1];
         let mut eval = 0;
         let start = time::Instant::now();
         for depth in 1..=depth {
@@ -194,15 +200,25 @@ impl Solver {
                     "info depth {depth} score {eval} nodes {nodes} knps {knps} ({:?} total time)",
                     elapsed
                 );
-                print!("pv");
-                let mut i = 0;
-                while let Some(pv_move) = self.get_pv_move(i) {
-                    i += 1;
-                    match pv_move {
-                        BitboardMove::SecondBest => print!(" !"),
-                        BitboardMove::StoneMove(smove) => print!(" {smove}"),
-                    }
+
+                print!("best move");
+                if let Some(pv_move) = self.get_pv_move(0) {
+                    print!(" {}", pv_move.to_string(&self.position));
                 }
+                // Skip for now, as there seems to be some bug.
+
+                // print!("pv");
+                // let mut pv_i = 0;
+                // while let Some(pv_move) = self.get_pv_move(pv_i) {
+                //     pv_i += 1;
+                //     // self.position.show();
+                //     print!(" {}", pv_move.to_string(&self.position));
+                //     self.position.make_move(pv_move);
+                // }
+                // // Set position back to original state.
+                // for _ in 0..pv_i {
+                //     self.position.unmake_move();
+                // }
                 println!();
             }
             match eval::decode_eval(self.position.num_moves() as isize, eval) {

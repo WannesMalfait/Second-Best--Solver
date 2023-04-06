@@ -16,8 +16,6 @@ pub struct MoveGen {
     stack_i: usize,
     /// Current stage we are in to generate moves in the second phase.
     adjacent_stage: Adjacent,
-    /// If the opponnent has an alignment.
-    has_alignment: bool,
     /// The pv-move from a previous iteration.
     pv_move: Option<BitboardMove>,
     played_pv: bool,
@@ -35,7 +33,6 @@ enum Adjacent {
 
 impl MoveGen {
     pub fn new(pos: &Position, pv_move: Option<BitboardMove>) -> Self {
-        // Generating moves..
         Self {
             free_to_spots: pos.free_spots(),
             possible_from_spots: pos.from_spots(true),
@@ -43,7 +40,6 @@ impl MoveGen {
             second_phase: pos.is_second_phase(),
             stack_i: 0,
             adjacent_stage: Adjacent::Left,
-            has_alignment: pos.has_alignment(false),
             pv_move,
             played_pv: false,
             did_second_best: !pos.can_second_best(),
@@ -69,10 +65,6 @@ impl Iterator for MoveGen {
         }
         if self.stack_i == Position::NUM_STACKS {
             // All the stacks have been done.
-            return None;
-        }
-        if self.has_alignment {
-            // Second Best is the only legal move.
             return None;
         }
         if !self.second_phase {
@@ -117,7 +109,7 @@ impl Iterator for MoveGen {
                     if self.banned_move == Some(candidate) {
                         continue;
                     }
-                    let candidate = Some(BitboardMove::StoneMove(to | from));
+                    let candidate = Some(BitboardMove::StoneMove(candidate));
                     if candidate != self.pv_move {
                         return candidate;
                     }

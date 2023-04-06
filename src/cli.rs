@@ -109,49 +109,53 @@ impl Cli {
         let abort = Arc::new(AtomicBool::new(false));
         let solver = Arc::new(Mutex::new(Solver::new(abort.clone())));
         let (tx, rx) = mpsc::channel::<ThreadRequest>();
-        std::thread::spawn(move || loop {
-            if let Ok(request) = rx.recv() {
-                match request {
-                    ThreadRequest::Quit => return,
-                    ThreadRequest::Search(req) => {
-                        let mut solver = req.solver.lock().unwrap();
-                        solver.be_noisy();
-                        let eval = solver.search(req.depth);
-                        solver.be_quiet();
-                        println!(
-                            "{}",
-                            eval::explain_eval(
-                                solver.position.num_moves() as isize,
-                                solver.position.current_player(),
-                                eval
-                            )
-                        );
-                    }
-                    ThreadRequest::GenBench(GenBenchRequest {
-                        abort,
-                        bench_args:
-                            GenBenchArgs {
-                                num_positions,
-                                min_moves,
-                                max_moves,
-                                min_depth,
-                                max_depth,
-                            },
-                    }) => {
-                        bench::generate_benchmark_file(
+        std::thread::Builder::new()
+            .name("Receiver".to_string())
+            .stack_size(5_000_000)
+            .spawn(move || loop {
+                if let Ok(request) = rx.recv() {
+                    match request {
+                        ThreadRequest::Quit => return,
+                        ThreadRequest::Search(req) => {
+                            let mut solver = req.solver.lock().unwrap();
+                            solver.be_noisy();
+                            let eval = solver.search(req.depth);
+                            solver.be_quiet();
+                            println!(
+                                "{}",
+                                eval::explain_eval(
+                                    solver.position.num_moves() as isize,
+                                    solver.position.current_player(),
+                                    eval
+                                )
+                            );
+                        }
+                        ThreadRequest::GenBench(GenBenchRequest {
                             abort,
-                            num_positions,
-                            min_moves..max_moves,
-                            min_depth..max_depth,
-                        )
-                        .unwrap();
-                    }
-                    ThreadRequest::RunBench(RunBenchRequest { abort, num_threads }) => {
-                        bench::run_benchmarks(abort, num_threads).unwrap();
+                            bench_args:
+                                GenBenchArgs {
+                                    num_positions,
+                                    min_moves,
+                                    max_moves,
+                                    min_depth,
+                                    max_depth,
+                                },
+                        }) => {
+                            bench::generate_benchmark_file(
+                                abort,
+                                num_positions,
+                                min_moves..max_moves,
+                                min_depth..max_depth,
+                            )
+                            .unwrap();
+                        }
+                        ThreadRequest::RunBench(RunBenchRequest { abort, num_threads }) => {
+                            bench::run_benchmarks(abort, num_threads).unwrap();
+                        }
                     }
                 }
-            }
-        });
+            })
+            .unwrap();
         Self {
             solver,
             abort,
@@ -255,7 +259,7 @@ impl Cli {
                 )
             }
             MoveFailed::PositionWinning => {
-                println!("The position is winning for the other player, so \"Second Best!\" should be called.")
+                println!("The position is won for the current player, so the game is over.")
             }
         }
     }
