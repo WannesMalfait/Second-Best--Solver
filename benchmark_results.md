@@ -77,3 +77,56 @@ solver efficiency (depth 7)
 solver efficiency (depth 9)
                         time:   [413.07 ms 418.46 ms 424.54 ms]
 ```
+
+## Bitboard representation
+
+Although this shouldn't have impacted node counts, because of some bugs being fixed and the benchmarks being regenerated, the node counts are different. However, the speed benchmarks clearly show an increase in speed for a fixed depth and position.
+
+```terminal
+
+Starting benchmark with 1000 positions.
+number of moves: 0..40
+solution depth: 2..5
+
+Finished benchmark:
+Average time: 0.0010s
+Average number of nodes searched: 1953.44
+Average knps: 1897.08 knps
+
+
+Starting benchmark with 1000 positions.
+number of moves: 0..40
+solution depth: 4..7
+
+Finished benchmark:
+Average time: 0.0054s
+Average number of nodes searched: 51074.60
+Average knps: 9372.14 knps
+```
+
+
+```terminal
+ 
+solver speed (depth 7)  time:   [17.139 ms 17.299 ms 17.472 ms]
+                        change: [-64.366% -63.253% -62.164%] (p = 0.00 < 0.05)
+                        Performance has improved.
+solver speed (depth 9)  time:   [188.25 ms 191.84 ms 195.89 ms]
+                        change: [-62.769% -61.402% -60.022%] (p = 0.00 < 0.05)
+                        Performance has improved.
+solver speed end (depth 7)
+                        time:   [63.427 ms 64.273 ms 65.255 ms]
+                        change: [-78.410% -77.836% -77.263%] (p = 0.00 < 0.05)
+                        Performance has improved.
+solver speed end (depth 9)
+                        time:   [1.1833 s 1.1958 s 1.2090 s]
+                        change: [-76.763% -76.333% -75.880%] (p = 0.00 < 0.05)
+                        Performance has improved.
+solver efficiency (depth 7)
+                        time:   [11.991 ms 12.230 ms 12.501 ms]
+                        change: [-60.349% -58.617% -56.794%] (p = 0.00 < 0.05)
+                        Performance has improved.
+solver efficiency (depth 9)
+                        time:   [170.94 ms 174.59 ms 178.86 ms]
+                        change: [-59.365% -58.278% -56.960%] (p = 0.00 < 0.05)
+                        Performance has improved.
+```
