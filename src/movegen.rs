@@ -33,11 +33,20 @@ enum Adjacent {
 
 impl MoveGen {
     pub fn new(pos: &Position, pv_move: Option<BitboardMove>) -> Self {
+        let banned_move = pos.banned_move();
+        let second_phase = pos.is_second_phase();
+        let mut free_to_spots = pos.free_spots();
+        if !second_phase {
+            if let Some(banned_move) = banned_move {
+                // Remove the banned move from the possible moves.
+                free_to_spots &= !banned_move;
+            }
+        }
         Self {
-            free_to_spots: pos.free_spots(),
+            free_to_spots,
             possible_from_spots: pos.from_spots(true),
-            banned_move: pos.banned_move(),
-            second_phase: pos.is_second_phase(),
+            banned_move,
+            second_phase,
             stack_i: 0,
             adjacent_stage: Adjacent::Left,
             pv_move,
@@ -53,8 +62,16 @@ impl Iterator for MoveGen {
         if !self.played_pv {
             self.played_pv = true;
             if let Some(pv_move) = self.pv_move {
-                if pv_move == BitboardMove::SecondBest {
-                    self.did_second_best = true;
+                match pv_move {
+                    BitboardMove::SecondBest => self.did_second_best = true,
+                    BitboardMove::StoneMove(smove) => {
+                        if !self.second_phase {
+                            // Remove the pv_move from the possible moves.
+                            self.free_to_spots &= !smove;
+                        }
+                        // If in the second phase, there could be multiple moves
+                        // with the same "to" spot.
+                    }
                 }
                 return Some(pv_move);
             }
@@ -63,19 +80,13 @@ impl Iterator for MoveGen {
             self.did_second_best = true;
             return Some(BitboardMove::SecondBest);
         }
-        if self.stack_i == Position::NUM_STACKS {
-            // All the stacks have been done.
-            return None;
-        }
         if !self.second_phase {
             while self.stack_i < Position::NUM_STACKS {
                 let candidate = Position::column_mask(self.stack_i) & self.free_to_spots;
                 self.stack_i += 1;
-                if candidate != 0 && self.banned_move != Some(candidate) {
-                    let candidate = Some(BitboardMove::StoneMove(candidate));
-                    if candidate != self.pv_move {
-                        return candidate;
-                    }
+                if candidate != 0 {
+                    // Checking for pv move and banned move is already handled.
+                    return Some(BitboardMove::StoneMove(candidate));
                 }
             }
         } else {
