@@ -16,27 +16,14 @@ pub enum ExplainableEval {
 pub fn static_eval(pos: &Position) -> isize {
     // For now just count how many stacks are controlled by each player.
     let mut score = 0;
-    for (stack_i, stack) in pos.board().iter().enumerate() {
-        let height = pos.stack_height(stack_i as u8);
-        if height == 0 {
-            continue;
-        }
-        let top_of_stack = stack[height as usize - 1];
-        match top_of_stack {
-            None => continue,
-            Some(color) => {
-                if color == pos.current_player() {
-                    score += height as isize;
-                } else {
-                    score -= height as isize;
-                }
-            }
-        }
-    }
-    if pos.player_has_alignment(pos.current_player().switch()) {
+    score += pos.controlled_stacks(true).count_ones() as isize;
+    score -= pos.controlled_stacks(false).count_ones() as isize;
+    // Since the bitboards store two copies of the board,
+    // we need to divide by 2.
+    score /= 2;
+    if pos.has_alignment(false) {
         score -= 10;
-    } else if pos.player_has_alignment(pos.current_player()) {
-        // Only get a bonus if our opponent isn't winning already.
+    } else if pos.has_alignment(true) {
         score += 10;
     }
     score
@@ -46,6 +33,12 @@ pub fn static_eval(pos: &Position) -> isize {
 #[inline]
 pub fn loss_score(num_moves: isize) -> isize {
     LOSS + num_moves
+}
+
+/// The evaluation of a win in a position with `num_moves` moves.
+#[inline]
+pub fn win_score(num_moves: isize) -> isize {
+    WIN - num_moves
 }
 
 /// Turn the evaluation into a more digestible enum.
@@ -68,7 +61,7 @@ pub fn explain_eval(num_moves: isize, side: Color, eval: isize) -> String {
         ),
         ExplainableEval::Loss(moves) => format!(
             "Position is lost:\n{} can win in {} move(s)",
-            side.switch(),
+            side.other(),
             moves
         ),
         ExplainableEval::Undetermined(eval) => format!(
