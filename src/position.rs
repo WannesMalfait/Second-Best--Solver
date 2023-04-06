@@ -429,9 +429,9 @@ impl Position {
 
     /// Make the move if it is valid, otherwise return why it wasn't valid.
     pub fn try_make_move(&mut self, pmove: PlayerMove) -> Result<(), MoveFailed> {
-        if self.has_alignment(true) {
+        if self.has_alignment(true) && !self.has_alignment(false) {
             // We have an alignment in this position,
-            // so the game is over.
+            // and our opponent does't, so the game is over.
             return Err(MoveFailed::PositionWinning);
         }
         let (from, to) = match pmove {
@@ -662,8 +662,8 @@ impl Position {
 
     /// Returns true if the current player is lost.
     pub fn game_status(&self) -> GameStatus {
-        if self.has_alignment(true) {
-            // Our turn, and we have an alignment.
+        if self.has_alignment(true) && !self.has_alignment(false) {
+            // Our turn, and we have an alignment, but our opponent doesn't.
             return GameStatus::Win;
         }
         // From now on we just check if we are lost (this turn), this can

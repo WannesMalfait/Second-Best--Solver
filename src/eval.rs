@@ -22,9 +22,8 @@ pub fn static_eval(pos: &Position) -> isize {
     // we need to divide by 2.
     score /= 2;
     if pos.has_alignment(false) {
+        // We don't check for us having an alignment, because that would already be a win.
         score -= 10;
-    } else if pos.has_alignment(true) {
-        score += 10;
     }
     score
 }
