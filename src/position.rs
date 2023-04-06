@@ -325,11 +325,13 @@ impl Position {
         }
     }
 
+    #[inline(always)]
     fn phase_one_stone_move(&self, to: usize) -> Bitboard {
         Position::column_mask(to) & self.free_spots()
     }
 
     /// The empty spots just on top of the stack.
+    #[inline(always)]
     pub fn free_spots(&self) -> Bitboard {
         // Why does this work?
         // Take one of the columns in the bitboard.
@@ -342,6 +344,7 @@ impl Position {
     }
 
     /// The top spots of every stack.
+    #[inline(always)]
     fn top_spots(&self) -> Bitboard {
         // Shifting left drags the columns down.
         // And-ing with self.played_spots ensures we don't overflow
@@ -351,17 +354,20 @@ impl Position {
     }
 
     /// A mask with all the spots marked in the given column.
+    #[inline(always)]
     pub fn column_mask(col: usize) -> Bitboard {
         Self::COLUMN_MASKS[col]
     }
 
     /// A mask with a one at the bottom of the given column.
+    #[inline(always)]
     fn column_bottom_mask(col: usize) -> Bitboard {
         1 << ((Self::STACK_HEIGHT + 1) * col)
     }
 
     /// Bitboard with a 1 on the bottom of each stack
     /// controlled by the given player.
+    #[inline(always)]
     pub fn controlled_stacks(&self, us: bool) -> Bitboard {
         let player_stones = if us {
             self.our_spots
@@ -378,6 +384,7 @@ impl Position {
 
     /// Bitboard with columns set to 1 if the given player
     /// controls that column.
+    #[inline(always)]
     pub fn controlled_columns(&self, us: bool) -> Bitboard {
         let controlled_stacks = self.controlled_stacks(us);
         (Self::BOTTOM << Self::STACK_HEIGHT) - controlled_stacks
@@ -385,16 +392,19 @@ impl Position {
 
     /// Bitboard with a 1 set on the top of every stack controlled
     /// by the given player.
+    #[inline(always)]
     pub fn from_spots(&self, us: bool) -> Bitboard {
         self.top_spots() & self.controlled_columns(us)
     }
 
     /// Bitboard with a 1 set on the bottom of the stacks which are still free.
+    #[inline(always)]
     pub fn free_columns(&self) -> Bitboard {
         Self::BOTTOM & !(self.played_spots >> 2)
     }
 
     /// Bitboard with a 1 set on every free spot that would give us an alignment.
+    #[inline(always)]
     pub fn vertical_alignment_spots(&self) -> Bitboard {
         // The free spots where we have two stones beneath it.
         (self.our_spots << 1) & (self.our_spots << 2) & self.free_spots()
@@ -410,22 +420,25 @@ impl Position {
     }
 
     /// The banned move in the current position if any.
+    #[inline(always)]
     pub fn banned_move(&self) -> Option<Bitboard> {
         self.banned_moves[self.num_moves + 1]
     }
 
     /// The number of moves that have been played in the current position.
+    #[inline(always)]
     pub fn num_moves(&self) -> usize {
         self.num_moves
     }
 
     /// Are we in the second phase of the game, where stones are no longer placed, but moved.
-    #[inline]
+    #[inline(always)]
     pub fn is_second_phase(&self) -> bool {
         self.num_moves >= 2 * Self::STONES_PER_PLAYER
     }
 
     /// Check if the "to" spot is adjacent or opposite to the "from" spot.
+    #[inline(always)]
     fn valid_adjacent(from: usize, to: usize) -> bool {
         (from + Self::RIGHT) % Self::NUM_STACKS == to
             || (from + Self::OPPOSITE) % Self::NUM_STACKS == to
@@ -433,7 +446,7 @@ impl Position {
     }
 
     /// Is the given move banned due to a "Second Best!" call?
-    #[inline]
+    #[inline(always)]
     fn is_move_banned(&self, smove: Bitboard) -> bool {
         self.banned_moves[self.num_moves + 1] == Some(smove)
     }
@@ -574,7 +587,7 @@ impl Position {
     /// 1. There should be at least one move played.
     /// 2. "Second Best!" should not have been called yet this turn.
     /// 3. "Second Best!" should not have been called previous turn.
-    #[inline]
+    #[inline(always)]
     pub fn can_second_best(&self) -> bool {
         self.num_moves > 0
             && self.banned_moves[self.num_moves].is_none()
@@ -613,6 +626,7 @@ impl Position {
         Ok(())
     }
 
+    #[inline(always)]
     fn stone_move_to_string(&self, smove: Bitboard) -> String {
         BitboardMove::StoneMove(smove)
             .to_player_move(self)
