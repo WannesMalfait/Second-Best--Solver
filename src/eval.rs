@@ -34,12 +34,6 @@ pub fn loss_score(num_moves: isize) -> isize {
     LOSS + num_moves
 }
 
-/// The evaluation of a win in a position with `num_moves` moves.
-#[inline]
-pub fn win_score(num_moves: isize) -> isize {
-    WIN - num_moves
-}
-
 /// Turn the evaluation into a more digestible enum.
 pub fn decode_eval(num_moves: isize, eval: isize) -> ExplainableEval {
     if eval < LOSS + Position::MAX_MOVES as isize {

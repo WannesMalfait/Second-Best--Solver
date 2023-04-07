@@ -453,11 +453,6 @@ impl Position {
 
     /// Make the move if it is valid, otherwise return why it wasn't valid.
     pub fn try_make_move(&mut self, pmove: PlayerMove) -> Result<(), MoveFailed> {
-        if self.has_alignment(true) && !self.has_alignment(false) {
-            // We have an alignment in this position,
-            // and our opponent does't, so the game is over.
-            return Err(MoveFailed::PositionWinning);
-        }
         let (from, to) = match pmove {
             PlayerMove::SecondBest => {
                 if !self.can_second_best() {
@@ -469,6 +464,11 @@ impl Position {
             }
             PlayerMove::StoneMove { from, to } => (from, to),
         };
+        if self.has_alignment(false) {
+            // We can't "Second Best!" and our opponent has an alignment.
+            return Err(MoveFailed::PositionWinning);
+        }
+
         if self.is_second_phase() {
             let Some(from) = from else {
                 return Err(MoveFailed::MissingFromSpot);
@@ -686,28 +686,25 @@ impl Position {
     }
 
     /// Returns true if the current player is lost.
-    pub fn game_status(&self) -> GameStatus {
-        if self.has_alignment(true) && !self.has_alignment(false) {
-            // Our turn, and we have an alignment, but our opponent doesn't.
-            return GameStatus::Win;
+    pub fn game_over(&self) -> bool {
+        if self.can_second_best() {
+            return false;
+        }
+        if self.has_alignment(false) {
+            // Opponent has an alignment, and we can't "Second Best!".
+            return true;
         }
         // From now on we just check if we are lost (this turn), this can
         // only happen if we have no legal moves.
-        // Technically it is possible for our opponent to have
-        // an alignment that we can't refute, but that is already searching
-        // at an extra depth.
         if !self.is_second_phase() {
-            return GameStatus::OnGoing;
-        }
-        if self.can_second_best() {
-            return GameStatus::OnGoing;
+            return false;
         }
         // Free columns are those where the top spot is not played.
         let free_columns = self.free_columns();
         let our_columns = self.controlled_stacks(true);
         if our_columns == 0 {
             // No controlled columns means no moves.
-            return GameStatus::Loss;
+            return true;
         }
 
         let left = Self::column_bottom_mask(Self::LEFT);
@@ -722,14 +719,14 @@ impl Position {
             }
             if (possible_to & free_columns) != 0 {
                 // Found a possible move.
-                return GameStatus::OnGoing;
+                return false;
             }
             // Move to the next column.
             possible_to <<= Self::STACK_HEIGHT + 1;
         }
 
         // No legal move, so the game is over.
-        GameStatus::Loss
+        true
     }
 
     /// Display the current state of the board.
@@ -865,6 +862,10 @@ impl Position {
             s += "\n";
         }
         println!("{s}");
+        if self.game_over() {
+            println!("Game over, ({}) has won!", self.current_player().other());
+            return;
+        }
         println!(
             "It is {} turn to move",
             match self.current_player() {
@@ -1040,7 +1041,7 @@ mod tests {
     #[test]
     fn game_over() {
         let mut pos = Position::default();
-        assert_eq!(pos.game_status(), GameStatus::OnGoing);
+        assert!(!pos.game_over());
         pos.parse_and_play_moves(
             "0 1 0 1 0"
                 .split_whitespace()
@@ -1050,7 +1051,7 @@ mod tests {
         .unwrap();
         pos.show();
         // Can still call second best.
-        assert_eq!(pos.game_status(), GameStatus::OnGoing);
+        assert!(!pos.game_over());
         pos.second_best();
         pos.parse_and_play_moves(
             "1 0 ! 7 7 ! 0"
@@ -1059,11 +1060,8 @@ mod tests {
                 .collect(),
         )
         .unwrap();
-        pos.make_phase_one_move(7);
-        pos.show();
-        // Our turn and we have an alignment.
-        assert_eq!(pos.game_status(), GameStatus::Win);
-        pos.unmake_stone_move();
+        // Can't second best.
+        assert!(pos.game_over());
         pos.unmake_stone_move();
         pos.show();
 
@@ -1075,11 +1073,11 @@ mod tests {
         )
         .unwrap();
         pos.show();
-        assert_eq!(pos.game_status(), GameStatus::OnGoing);
+        assert!(!pos.game_over());
         pos.make_phase_one_move(5);
         pos.make_phase_one_move(5);
         pos.make_phase_one_move(4);
-        assert_eq!(pos.game_status(), GameStatus::OnGoing);
+        assert!(!pos.game_over());
         pos.show();
         pos.try_make_move(PlayerMove::StoneMove {
             from: Some(7),
@@ -1087,7 +1085,7 @@ mod tests {
         })
         .unwrap();
         pos.show();
-        assert_eq!(pos.game_status(), GameStatus::OnGoing);
+        assert!(!pos.game_over());
         pos.second_best();
         pos.try_make_move(PlayerMove::StoneMove {
             from: Some(0),
@@ -1096,7 +1094,7 @@ mod tests {
         .unwrap();
         pos.show();
         // No legal moves.
-        assert_eq!(pos.game_status(), GameStatus::Loss);
+        assert!(pos.game_over());
     }
 
     #[test]

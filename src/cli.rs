@@ -205,6 +205,7 @@ impl Cli {
                 }
             }
             Command::Eval { depth } => {
+                self.abort.store(false, Ordering::Relaxed);
                 let solver = self.solver.clone();
                 let req = SearchRequest { solver, depth };
                 self.sender.send(ThreadRequest::Search(req)).unwrap();
@@ -259,7 +260,7 @@ impl Cli {
                 )
             }
             MoveFailed::PositionWinning => {
-                println!("The position is won for the current player, so the game is over.")
+                println!("The opponent has an alignment, so \"Second Best!\" should be called.")
             }
         }
     }

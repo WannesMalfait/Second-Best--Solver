@@ -47,6 +47,22 @@ enum Adjacent {
 
 impl MoveGen {
     pub fn new(pos: &Position, pv_move: Option<BitboardMove>) -> Self {
+        let second_best_forced = pos.has_alignment(false);
+        if second_best_forced {
+            return Self {
+                alignment_spots: 0,
+                good_to_spots: 0,
+                bad_to_spots: 0,
+                possible_from_spots: 0,
+                banned_move: None,
+                second_phase: false,
+                stack_i: 0,
+                adjacent_stage: Adjacent::Left,
+                can_second_best: pos.can_second_best(),
+                pv_move: None,
+                stage: Stage::SecondBest,
+            };
+        }
         let banned_move = pos.banned_move();
         let second_phase = pos.is_second_phase();
         let mut free_to_spots = pos.free_spots();
@@ -225,35 +241,29 @@ mod tests {
             nodes += 1;
             let pmove = smove.to_player_move(&pos);
             pos.try_make_move(pmove).unwrap();
-            if !pos.has_alignment(true) {
+            let moves = MoveGen::new(&pos, None);
+            for smove in moves {
+                nodes += 1;
+                let pmove = smove.to_player_move(&pos);
+                pos.try_make_move(pmove).unwrap();
                 let moves = MoveGen::new(&pos, None);
                 for smove in moves {
                     nodes += 1;
                     let pmove = smove.to_player_move(&pos);
                     pos.try_make_move(pmove).unwrap();
-                    if !pos.has_alignment(true) {
-                        let moves = MoveGen::new(&pos, None);
-                        for smove in moves {
-                            nodes += 1;
-                            let pmove = smove.to_player_move(&pos);
-                            pos.try_make_move(pmove).unwrap();
-                            if !pos.has_alignment(true) {
-                                let moves = MoveGen::new(&pos, None);
-                                for smove in moves {
-                                    nodes += 1;
-                                    let pmove = smove.to_player_move(&pos);
-                                    pos.try_make_move(pmove).unwrap();
-                                    pos.unmake_move();
-                                }
-                            }
-                            pos.unmake_move();
-                        }
+                    let moves = MoveGen::new(&pos, None);
+                    for smove in moves {
+                        nodes += 1;
+                        let pmove = smove.to_player_move(&pos);
+                        pos.try_make_move(pmove).unwrap();
+                        pos.unmake_move();
                     }
                     pos.unmake_move();
                 }
+                pos.unmake_move();
             }
             pos.unmake_move();
         }
-        assert_eq!(nodes, 2770);
+        assert_eq!(nodes, 2525);
     }
 }

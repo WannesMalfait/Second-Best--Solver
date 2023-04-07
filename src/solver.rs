@@ -1,7 +1,6 @@
 use crate::eval;
 use crate::movegen;
 use crate::position::BitboardMove;
-use crate::position::GameStatus;
 use crate::position::Position;
 use std::cmp::max;
 use std::sync::atomic::AtomicBool;
@@ -105,12 +104,9 @@ impl Solver {
         }
 
         self.nodes += 1;
-        match self.position.game_status() {
-            GameStatus::Loss => return eval::loss_score(self.position.num_moves() as isize),
-            GameStatus::Win => return eval::win_score(self.position.num_moves() as isize),
-            GameStatus::OnGoing => (),
-        };
-
+        if self.position.game_over() {
+            return eval::loss_score(self.position.num_moves() as isize);
+        }
         if depth == 0 {
             // Return a static evaluation of the position.
             let eval = eval::static_eval(&self.position);

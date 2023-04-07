@@ -1,7 +1,6 @@
 use crate::eval;
 use crate::movegen;
 use crate::position::BitboardMove;
-use crate::position::GameStatus;
 use crate::position::Position;
 use crate::solver;
 
@@ -79,7 +78,7 @@ fn generate_random_position(
         return None;
     }
     if solver.position.num_moves() < moves_range.start {
-        if solver.position.game_status() != GameStatus::OnGoing {
+        if solver.position.game_over() {
             // We are in a game over state, but not deep enough yet.
             return None;
         }
