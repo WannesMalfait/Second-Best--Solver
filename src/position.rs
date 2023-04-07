@@ -663,11 +663,8 @@ impl Position {
             self.our_spots ^ self.played_spots
         };
         // Check for alignment in the columns:
-        for col in 0..Self::NUM_STACKS {
-            if Self::column_mask(col) == (Self::column_mask(col) & player_stones) {
-                // All stones in the column are controlled by the player.
-                return true;
-            }
+        if (player_stones & (player_stones << 1) & (player_stones << 2)) != 0 {
+            return true;
         }
 
         // Check for alignment on top of the stacks.
