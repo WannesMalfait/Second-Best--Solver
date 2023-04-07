@@ -316,7 +316,7 @@ impl Position {
         println!();
     }
 
-    fn stone_move(&self, from: Option<usize>, to: usize) -> Bitboard {
+    pub fn stone_move(&self, from: Option<usize>, to: usize) -> Bitboard {
         let bb = self.phase_one_stone_move(to);
         if let Some(from) = from {
             bb | (Position::column_mask(from) & (self.top_spots()))
@@ -328,6 +328,11 @@ impl Position {
     #[inline(always)]
     fn phase_one_stone_move(&self, to: usize) -> Bitboard {
         Position::column_mask(to) & self.free_spots()
+    }
+
+    #[inline(always)]
+    pub fn our_spots(&self) -> Bitboard {
+        self.our_spots
     }
 
     /// The empty spots just on top of the stack.
@@ -423,6 +428,14 @@ impl Position {
     #[inline(always)]
     pub fn banned_move(&self) -> Option<Bitboard> {
         self.banned_moves[self.num_moves + 1]
+    }
+
+    pub fn last_stone_move(&self) -> Option<Bitboard> {
+        if self.banned_move().is_some() {
+            self.banned_move()
+        } else {
+            self.move_history[self.num_moves()]
+        }
     }
 
     /// The number of moves that have been played in the current position.
@@ -536,8 +549,8 @@ impl Position {
     /// Make a move in the given position.
     /// No checks are done whether the move is valid.
     /// For a safe version of this method, use [`try_make_move`].
-    pub fn make_move(&mut self, gmove: BitboardMove) {
-        match gmove {
+    pub fn make_move(&mut self, bmove: BitboardMove) {
+        match bmove {
             BitboardMove::SecondBest => self.second_best(),
             BitboardMove::StoneMove(smove) => self.make_stone_move(smove),
         }

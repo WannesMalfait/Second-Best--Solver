@@ -123,11 +123,7 @@ impl Cli {
                             solver.be_quiet();
                             println!(
                                 "{}",
-                                eval::explain_eval(
-                                    solver.position.num_moves() as isize,
-                                    solver.position.current_player(),
-                                    eval
-                                )
+                                eval::explain_eval(solver.position.current_player(), eval)
                             );
                         }
                         ThreadRequest::GenBench(GenBenchRequest {

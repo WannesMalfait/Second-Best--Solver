@@ -28,26 +28,26 @@ pub fn static_eval(pos: &Position) -> isize {
     score
 }
 
-/// The evaluation of a loss in a position with `num_moves` moves.
+/// The evaluation of a loss at the given ply.
 #[inline]
-pub fn loss_score(num_moves: isize) -> isize {
-    LOSS + num_moves
+pub fn loss_score(ply: isize) -> isize {
+    LOSS + ply
 }
 
 /// Turn the evaluation into a more digestible enum.
-pub fn decode_eval(num_moves: isize, eval: isize) -> ExplainableEval {
+pub fn decode_eval(eval: isize) -> ExplainableEval {
     if eval < LOSS + Position::MAX_MOVES as isize {
-        ExplainableEval::Loss(eval - LOSS - num_moves)
+        ExplainableEval::Loss(eval - LOSS)
     } else if eval > WIN - Position::MAX_MOVES as isize {
-        ExplainableEval::Win(WIN - eval - num_moves)
+        ExplainableEval::Win(WIN - eval)
     } else {
         ExplainableEval::Undetermined(eval)
     }
 }
 
 /// Explain an evaluation in a human readable way.
-pub fn explain_eval(num_moves: isize, side: Color, eval: isize) -> String {
-    match decode_eval(num_moves, eval) {
+pub fn explain_eval(side: Color, eval: isize) -> String {
+    match decode_eval(eval) {
         ExplainableEval::Win(moves) => format!(
             "Position is winning:\n{} can win in {} move(s)",
             side, moves

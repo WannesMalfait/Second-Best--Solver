@@ -1,4 +1,5 @@
 use crate::eval;
+use crate::eval::ExplainableEval;
 use crate::movegen;
 use crate::position::BitboardMove;
 use crate::position::Position;
@@ -86,7 +87,7 @@ fn generate_random_position(
         }
     } else {
         let eval = solver.search(depth_range.end);
-        let eval = eval::decode_eval(solver.position.num_moves() as isize, eval);
+        let eval = eval::decode_eval(eval);
         match eval {
             eval::ExplainableEval::Undetermined(_) => (),
             eval::ExplainableEval::Win(moves) | eval::ExplainableEval::Loss(moves) => {
@@ -197,7 +198,13 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
                                 position.split_whitespace().map(|s| s.to_string()).collect();
                             solver.position.parse_and_play_moves(moves).unwrap();
                             let now = std::time::Instant::now();
-                            solver.search(max_depth);
+                            // Add extra depth, in case the solver needs it.
+                            let eval = solver.search(max_depth);
+                            // Sanity check to make sure we actually solved the position.
+                            if matches!(eval::decode_eval(eval), ExplainableEval::Undetermined(_)) {
+                                println!("\n Failed position {}", position);
+                                break;
+                            }
                             if solver.abort_search() {
                                 break;
                             }
