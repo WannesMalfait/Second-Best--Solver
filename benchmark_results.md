@@ -133,18 +133,29 @@ solver efficiency (depth 9)
 
 ## Move sorting
 
+Again, the bench marks had to be regenerated, since there were some bugs in the previous version.
+
 This adds some heuristics for which moves should be looked at first. As you can see, the number of explored nodes goes down dramatically, due to better pruning.
 
 ```terminal
+Starting benchmark with 1000 positions.
+number of moves: 16..40
+solution depth: 6..10
+
+Finished benchmark:
+Average time: 0.0231s
+Average number of nodes searched: 188024.96
+Average knps: 8132.64 knps
+
 
 Starting benchmark with 1000 positions.
 number of moves: 0..40
 solution depth: 2..5
 
 Finished benchmark:
-Average time: 0.0010s
-Average number of nodes searched: 1764.50
-Average knps: 1696.30 knps
+Average time: 0.0003s
+Average number of nodes searched: 272.00
+Average knps: 801.24 knps
 
 
 Starting benchmark with 1000 positions.
@@ -152,33 +163,20 @@ number of moves: 0..40
 solution depth: 4..7
 
 Finished benchmark:
-Average time: 0.0027s
-Average number of nodes searched: 17831.55
-Average knps: 6690.30 knps
-```
+Average time: 0.0012s
+Average number of nodes searched: 5334.01
+Average knps: 4351.29 knps```
 
 ```terminal
 
-solver speed (depth 7)  time:   [4.3089 ms 4.4060 ms 4.5282 ms]
-                        change: [-72.255% -71.123% -69.647%] (p = 0.00 < 0.05)
-                        Performance has improved.
-solver speed (depth 9)  time:   [198.99 ms 207.43 ms 216.76 ms]
-                        change: [+10.172% +15.239% +21.495%] (p = 0.00 < 0.05)
-                        Performance has regressed.
+solver speed (depth 7)  time:   [18.713 ms 18.731 ms 18.754 ms]
+solver speed (depth 9)  time:   [69.188 ms 69.621 ms 70.197 ms]
 solver speed end (depth 7)
-                        time:   [11.785 ms 11.883 ms 12.023 ms]
-                        change: [-83.222% -82.919% -82.594%] (p = 0.00 < 0.05)
-                        Performance has improved.
+                        time:   [8.1593 ms 8.1743 ms 8.1922 ms]
 solver speed end (depth 9)
-                        time:   [115.03 ms 119.07 ms 123.46 ms]
-                        change: [-91.298% -90.991% -90.672%] (p = 0.00 < 0.05)
-                        Performance has improved.
+                        time:   [91.788 ms 91.869 ms 91.987 ms]
 solver efficiency (depth 7)
-                        time:   [3.0179 ms 3.1679 ms 3.3689 ms]
-                        change: [-76.876% -75.703% -74.429%] (p = 0.00 < 0.05)
-                        Performance has improved.
+                        time:   [923.92 µs 924.50 µs 925.15 µs]
 solver efficiency (depth 9)
-                        time:   [17.055 ms 17.125 ms 17.200 ms]
-                        change: [-89.375% -89.252% -89.129%] (p = 0.00 < 0.05)
-                        Performance has improved.
+                        time:   [5.0140 ms 5.0215 ms 5.0313 ms]
 ```

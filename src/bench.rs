@@ -31,11 +31,12 @@ pub fn generate_benchmark_file(
     let mut counter = 0;
     while positions.len() < num_positions {
         counter += 1;
-        println!("Generating position {}", positions.len());
+        print!("\rGenerating position {}", positions.len() + 1);
+        io::stdout().flush().unwrap();
         let mut solver = solver::Solver::new(abort.clone());
         let moves = generate_random_position(&mut solver, &moves_range, &depth_range, counter);
         if abort.load(std::sync::atomic::Ordering::Relaxed) {
-            println!("Stopping benchmark generation.");
+            println!("\nStopping benchmark generation.");
             break;
         }
         let moves = moves.unwrap();
@@ -43,6 +44,7 @@ pub fn generate_benchmark_file(
             positions.push(moves);
         }
     }
+    println!();
     if positions.is_empty() {
         // Don't create the file if nothing was generated.
         println!("No benchmarks generated.");
