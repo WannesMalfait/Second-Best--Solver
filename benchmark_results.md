@@ -180,3 +180,64 @@ solver efficiency (depth 7)
 solver efficiency (depth 9)
                         time:   [5.0140 ms 5.0215 ms 5.0313 ms]
 ```
+
+## Transposition Table
+
+By caching explored nodes, we prevent doing the same work more than once. The number of explored nodes goes down significantly. As a consequence, the overall speed of the solver increases, even though it is spending more time on each node.
+```terminal
+
+Starting benchmark with 1000 positions.
+number of moves: 16..40
+solution depth: 6..10
+
+Finished benchmark:
+Average time: 0.0049s
+Average number of nodes searched: 26108.30
+Average knps: 5308.18 knps
+
+
+Starting benchmark with 1000 positions.
+number of moves: 0..40
+solution depth: 2..5
+
+Finished benchmark:
+Average time: 0.0000s
+Average number of nodes searched: 216.63
+Average knps: 5148.78 knps
+
+
+Starting benchmark with 1000 positions.
+number of moves: 0..40
+solution depth: 4..7
+
+Finished benchmark:
+Average time: 0.0004s
+Average number of nodes searched: 2433.18
+Average knps: 6358.06 knps
+```
+
+```terminal
+
+solver speed (depth 7)  time:   [11.983 ms 12.379 ms 12.818 ms]
+                        change: [-29.708% -27.468% -25.096%] (p = 0.00 < 0.05)
+                        Performance has improved.
+solver speed (depth 9)  time:   [61.901 ms 63.369 ms 64.948 ms]
+                        change: [-2.5731% -0.3737% +2.0823%] (p = 0.77 > 0.05)
+                        No change in performance detected.
+solver speed end (depth 7)
+                        time:   [2.0684 ms 2.1453 ms 2.2360 ms]
+                        change: [-72.900% -72.211% -71.550%] (p = 0.00 < 0.05)
+                        Performance has improved.
+solver speed end (depth 9)
+                        time:   [13.870 ms 14.211 ms 14.579 ms]
+                        change: [-83.992% -83.601% -83.156%] (p = 0.00 < 0.05)
+                        Performance has improved.
+solver efficiency (depth 7)
+                        time:   [838.88 µs 854.19 µs 870.53 µs]
+                        change: [-4.0314% -2.2746% -0.5558%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+solver efficiency (depth 9)
+                        time:   [3.3862 ms 3.5350 ms 3.6835 ms]
+                        change: [-29.358% -27.534% -25.490%] (p = 0.00 < 0.05)
+                        Performance has improved.
+```
