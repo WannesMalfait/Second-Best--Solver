@@ -62,8 +62,10 @@ pub struct Position {
     played_spots: Bitboard,
     /// Bitboard containing all the played spots by the current player.
     our_spots: Bitboard,
-    /// Number of moves played throughout the game.
-    num_moves: usize,
+    /// Number of turns that we have had.
+    num_turns: usize,
+    /// Number of moves played including "Second Best!".
+    ply: usize,
     /// History of all the stone moves played in the game.
     move_history: [Option<Bitboard>; Self::MAX_MOVES],
     /// History of all the moves which were banned.
@@ -124,7 +126,8 @@ impl Default for Position {
         Position {
             played_spots: 0,
             our_spots: 0,
-            num_moves: 0,
+            num_turns: 0,
+            ply: 0,
             move_history: [None; Self::MAX_MOVES],
             banned_moves: [None; Self::MAX_MOVES],
         }
@@ -417,7 +420,7 @@ impl Position {
 
     /// The current player to move.
     pub fn current_player(&self) -> Color {
-        match self.num_moves % 2 {
+        match self.num_turns % 2 {
             0 => Color::Black,
             1 => Color::White,
             _ => unreachable!(),
@@ -427,27 +430,32 @@ impl Position {
     /// The banned move in the current position if any.
     #[inline(always)]
     pub fn banned_move(&self) -> Option<Bitboard> {
-        self.banned_moves[self.num_moves + 1]
+        self.banned_moves[self.num_turns + 1]
     }
 
     pub fn last_stone_move(&self) -> Option<Bitboard> {
         if self.banned_move().is_some() {
             self.banned_move()
         } else {
-            self.move_history[self.num_moves()]
+            self.move_history[self.num_turns()]
         }
     }
 
-    /// The number of moves that have been played in the current position.
+    /// The number of turns that have been played in the current position.
     #[inline(always)]
-    pub fn num_moves(&self) -> usize {
-        self.num_moves
+    pub fn num_turns(&self) -> usize {
+        self.num_turns
+    }
+
+    #[inline(always)]
+    pub fn ply(&self) -> usize {
+        self.ply
     }
 
     /// Are we in the second phase of the game, where stones are no longer placed, but moved.
     #[inline(always)]
     pub fn is_second_phase(&self) -> bool {
-        self.num_moves >= 2 * Self::STONES_PER_PLAYER
+        self.num_turns >= 2 * Self::STONES_PER_PLAYER
     }
 
     /// Check if the "to" spot is adjacent or opposite to the "from" spot.
@@ -461,7 +469,7 @@ impl Position {
     /// Is the given move banned due to a "Second Best!" call?
     #[inline(always)]
     fn is_move_banned(&self, smove: Bitboard) -> bool {
-        self.banned_moves[self.num_moves + 1] == Some(smove)
+        self.banned_moves[self.num_turns + 1] == Some(smove)
     }
 
     /// Make the move if it is valid, otherwise return why it wasn't valid.
@@ -574,22 +582,24 @@ impl Position {
         // The opponents spots are the played spots where we didn't play.
         self.our_spots ^= self.played_spots;
         self.played_spots ^= smove;
-        self.num_moves += 1;
-        self.move_history[self.num_moves] = Some(smove);
+        self.num_turns += 1;
+        self.ply += 1;
+        self.move_history[self.num_turns] = Some(smove);
     }
 
     /// Unmake the last move played.
     /// Returns the move that was undone.
     pub fn unmake_stone_move(&mut self) -> Bitboard {
-        if self.num_moves == 0 {
+        if self.num_turns == 0 {
             unreachable!("Logic error in the program");
         }
-        let Some(last_move) = self.move_history[self.num_moves] else {
+        let Some(last_move) = self.move_history[self.num_turns] else {
             unreachable!("There should be a move, because we have played that many moves.")
         };
-        self.move_history[self.num_moves] = None;
-        self.banned_moves[self.num_moves + 1] = None;
-        self.num_moves -= 1;
+        self.move_history[self.num_turns] = None;
+        self.banned_moves[self.num_turns + 1] = None;
+        self.num_turns -= 1;
+        self.ply -= 1;
         // xor-ing a second time undoes the first xor.
         self.played_spots ^= last_move;
         self.our_spots ^= self.played_spots;
@@ -602,24 +612,26 @@ impl Position {
     /// 3. "Second Best!" should not have been called previous turn.
     #[inline(always)]
     pub fn can_second_best(&self) -> bool {
-        self.num_moves > 0
-            && self.banned_moves[self.num_moves].is_none()
-            && self.banned_moves[self.num_moves + 1].is_none()
+        self.num_turns > 0
+            && self.banned_moves[self.num_turns].is_none()
+            && self.banned_moves[self.num_turns + 1].is_none()
     }
 
     /// Opponent called "Second Best!"
     /// This should only be called if `can_second_best()` is true.
     pub fn second_best(&mut self) {
         let last_move = self.unmake_stone_move();
-        self.banned_moves[self.num_moves + 1] = Some(last_move);
+        self.ply += 2;
+        self.banned_moves[self.num_turns + 1] = Some(last_move);
     }
 
     /// Undo a "Second Best!" call.
     /// Should only be called if there is a banned move in the current position.
     pub fn undo_second_best(&mut self) {
         let banned_move = self.banned_move().unwrap();
-        self.banned_moves[self.num_moves + 1] = None;
+        self.banned_moves[self.num_turns + 1] = None;
         self.make_stone_move(banned_move);
+        self.ply -= 2;
     }
 
     /// Parses the moves and plays them one by one.
@@ -650,7 +662,7 @@ impl Position {
     /// An "inverse" to `parse_and_play_moves`.
     pub fn serialize(mut self) -> String {
         let mut moves = std::vec::Vec::<String>::new();
-        for move_i in (0..self.num_moves).rev() {
+        for move_i in (0..self.num_turns).rev() {
             let smove = self.move_history[move_i + 1].unwrap();
             self.unmake_stone_move();
             let s = self.stone_move_to_string(smove);
@@ -918,7 +930,7 @@ mod tests {
             pos.try_make_move(PlayerMove::StoneMove { from: None, to: 0 }),
             Err(MoveFailed::InvalidToSpot)
         );
-        assert_eq!(pos.num_moves, Position::STACK_HEIGHT);
+        assert_eq!(pos.num_turns, Position::STACK_HEIGHT);
         // Use make_stone_move the stones.
         'outer: for stack in 1..Position::NUM_STACKS {
             for _ in 0..Position::STACK_HEIGHT {
@@ -980,7 +992,7 @@ mod tests {
         pos.make_phase_one_move(0);
         assert!(pos.can_second_best());
         pos.second_best();
-        assert_eq!(pos.num_moves, 0);
+        assert_eq!(pos.num_turns, 0);
         assert_eq!(
             pos.try_make_move(PlayerMove::StoneMove { from: None, to: 0 }),
             Err(MoveFailed::MoveBanned)
@@ -1168,7 +1180,7 @@ mod tests {
         let mut pos2 = Position::default();
         pos2.parse_and_play_moves(moves.split_whitespace().map(|s| s.to_string()).collect())
             .unwrap();
-        assert_eq!(pos.num_moves, pos2.num_moves);
+        assert_eq!(pos.num_turns, pos2.num_turns);
         assert_eq!(pos.our_spots, pos2.our_spots);
         assert_eq!(pos.played_spots, pos2.played_spots);
         assert_eq!(pos.banned_moves, pos2.banned_moves);

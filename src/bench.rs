@@ -76,18 +76,18 @@ fn generate_random_position(
         return None;
     }
 
-    if solver.position.num_moves() > moves_range.end {
+    if solver.position.num_turns() > moves_range.end {
         // Searching way too deep.
         return None;
     }
-    if solver.position.num_moves() < moves_range.start {
+    if solver.position.num_turns() < moves_range.start {
         if solver.position.game_over() {
             // We are in a game over state, but not deep enough yet.
             return None;
         }
     } else {
         let eval = solver.search(depth_range.end);
-        let eval = eval::decode_eval(eval);
+        let eval = eval::decode_eval(eval, solver.position.ply() as isize);
         match eval {
             eval::ExplainableEval::Undetermined(_) => (),
             eval::ExplainableEval::Win(moves) | eval::ExplainableEval::Loss(moves) => {
@@ -201,7 +201,10 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
                             // Add extra depth, in case the solver needs it.
                             let eval = solver.search(max_depth);
                             // Sanity check to make sure we actually solved the position.
-                            if matches!(eval::decode_eval(eval), ExplainableEval::Undetermined(_)) {
+                            if matches!(
+                                eval::decode_eval(eval, solver.position.ply() as isize),
+                                ExplainableEval::Undetermined(_)
+                            ) {
                                 println!("\n Failed position {}", position);
                                 break;
                             }

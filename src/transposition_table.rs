@@ -1,4 +1,7 @@
-use crate::position::{BitboardMove, PlayerMove, Position};
+use crate::{
+    eval::{self, decode_eval, ExplainableEval},
+    position::{BitboardMove, PlayerMove, Position},
+};
 
 /// A compact storage of a move in 8 bits.
 /// The bits are decomposed as follows:
@@ -85,21 +88,35 @@ pub struct Entry {
     score: i16,
     best_move: TTMove,
     entry_type: EntryType,
+    depth: u8,
 }
 
 impl Entry {
-    fn new(pos: &Position, score: i16, best_move: BitboardMove, entry_type: EntryType) -> Self {
+    fn new(
+        pos: &Position,
+        score: i16,
+        best_move: BitboardMove,
+        entry_type: EntryType,
+        depth: u8,
+    ) -> Self {
         Self {
             score,
             best_move: TTMove::from_bitboard_move(pos, best_move),
             entry_type,
+            depth,
         }
     }
 
-    pub fn score(&self) -> isize {
-        self.score as isize
+    /// The score for mate evals depends on the ply.
+    pub fn score(&self, ply: isize) -> isize {
+        if self.score as isize >= eval::IS_WIN {
+            self.score as isize - ply
+        } else if self.score as isize <= eval::IS_LOSS {
+            self.score as isize + ply
+        } else {
+            self.score as isize
+        }
     }
-
     pub fn best_move(&self, pos: &Position) -> BitboardMove {
         self.best_move.to_bitboard_move(pos)
     }
@@ -110,6 +127,10 @@ impl Entry {
 
     pub fn entry_type(&self) -> EntryType {
         self.entry_type
+    }
+
+    pub fn depth(&self) -> usize {
+        self.depth as usize
     }
 }
 
@@ -188,7 +209,7 @@ impl TranspositionTable {
     ///
     /// Because of "Second Best!" we also need to know the last
     /// move, and whether or not "Second Best!" is possible.
-    fn key(pos: &Position) -> u64 {
+    pub fn key(pos: &Position) -> u64 {
         let u32mask = 0xFFFF_FFFF;
         let last_move_info = match pos.last_stone_move() {
             Some(smove) => smove & !u32mask,
@@ -211,10 +232,16 @@ impl TranspositionTable {
         score: isize,
         best_move: BitboardMove,
         entry_type: EntryType,
+        depth: usize,
     ) {
         let key = Self::key(pos);
         let index = self.index(key);
-        self.entries[index] = Entry::new(pos, score as i16, best_move, entry_type);
+        let score = match decode_eval(score, pos.ply() as isize) {
+            ExplainableEval::Undetermined(_) => score,
+            ExplainableEval::Win(_) => score + pos.ply() as isize,
+            ExplainableEval::Loss(_) => score - pos.ply() as isize,
+        };
+        self.entries[index] = Entry::new(pos, score as i16, best_move, entry_type, depth as u8);
         self.keys[index] = key;
     }
 
@@ -275,7 +302,7 @@ mod tests {
         for to in 0..8 {
             let bmove = BitboardMove::StoneMove(pos.stone_move(None, to));
 
-            tt.store(&pos, 0, bmove, EntryType::Exact);
+            tt.store(&pos, 0, bmove, EntryType::Exact, 0);
             assert_eq!(tt.get(&pos).unwrap().best_move(&pos), bmove);
             pos.make_move(bmove);
         }
@@ -289,7 +316,7 @@ mod tests {
             pos.make_move(bmove);
             pos.second_best();
             let bmove = BitboardMove::StoneMove(pos.stone_move(None, (1 + to) % 8));
-            tt.store(&pos, 0, bmove, EntryType::Exact);
+            tt.store(&pos, 0, bmove, EntryType::Exact, 0);
             assert_eq!(tt.get(&pos).unwrap().best_move(&pos), bmove);
             pos.make_move(bmove);
         }
@@ -312,7 +339,13 @@ mod tests {
         let mut tt = TranspositionTable::default();
         pos.make_phase_one_move(1);
         pos.make_phase_one_move(2);
-        tt.store(&pos, 0, BitboardMove::SecondBest, EntryType::Undetermined);
+        tt.store(
+            &pos,
+            0,
+            BitboardMove::SecondBest,
+            EntryType::Undetermined,
+            0,
+        );
         pos.unmake_move();
         pos.unmake_move();
         pos.make_phase_one_move(2);

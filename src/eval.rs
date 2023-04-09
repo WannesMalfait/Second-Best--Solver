@@ -1,7 +1,9 @@
 use crate::position::{Color, Position};
 
 pub const WIN: isize = 1000;
+pub const IS_WIN: isize = WIN - Position::MAX_MOVES as isize;
 pub const LOSS: isize = -WIN;
+pub const IS_LOSS: isize = -IS_WIN;
 
 pub enum ExplainableEval {
     /// A win, with how many moves needed to get there.
@@ -35,19 +37,19 @@ pub fn loss_score(ply: isize) -> isize {
 }
 
 /// Turn the evaluation into a more digestible enum.
-pub fn decode_eval(eval: isize) -> ExplainableEval {
-    if eval < LOSS + Position::MAX_MOVES as isize {
-        ExplainableEval::Loss(eval - LOSS)
-    } else if eval > WIN - Position::MAX_MOVES as isize {
-        ExplainableEval::Win(WIN - eval)
+pub fn decode_eval(eval: isize, ply: isize) -> ExplainableEval {
+    if eval < IS_LOSS {
+        ExplainableEval::Loss(eval - LOSS - ply)
+    } else if eval > IS_WIN {
+        ExplainableEval::Win(WIN - eval - ply)
     } else {
         ExplainableEval::Undetermined(eval)
     }
 }
 
 /// Explain an evaluation in a human readable way.
-pub fn explain_eval(side: Color, eval: isize) -> String {
-    match decode_eval(eval) {
+pub fn explain_eval(side: Color, eval: isize, ply: isize) -> String {
+    match decode_eval(eval, ply) {
         ExplainableEval::Win(moves) => format!(
             "Position is winning:\n{} can win in {} move(s)",
             side, moves
