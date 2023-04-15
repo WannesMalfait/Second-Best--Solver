@@ -1,6 +1,5 @@
 use crate::eval;
 use crate::movegen;
-use crate::position::BitboardMove;
 use crate::position::Position;
 use crate::transposition_table::EntryType;
 use crate::transposition_table::TranspositionTable;
@@ -67,7 +66,8 @@ impl Solver {
         let mut best_move = None;
         if let Some(tt_entry) = self.t_table.get(&self.position) {
             best_move = Some(tt_entry.best_move(&self.position));
-            if tt_entry.depth() >= depth {
+            // If we find the entry in a direct way, the score can be used.
+            if tt_entry.ply() >= self.position.ply() {
                 let score = tt_entry.score(self.position.ply() as isize);
                 match tt_entry.entry_type() {
                     EntryType::Undetermined => (),
@@ -95,30 +95,28 @@ impl Solver {
         }
 
         // Set the best score to the minimal value at first.
-        // Worst case is that we lose next move.
-        let mut best_score = eval::loss_score(self.position.ply() as isize);
+        // We can only be lost on our turn, so worst case we lose in 2 ply.
+        let mut best_score = eval::loss_score(self.position.ply() as isize + 2);
+        if best_score >= beta {
+            return best_score;
+        }
 
         // Look at the child nodes:
         let moves = movegen::MoveGen::new(&self.position, best_move);
         for bmove in moves {
-            let eval = match bmove {
-                BitboardMove::SecondBest => {
-                    self.position.second_best();
-                    let eval = -self.negamax(depth, -beta, -alpha);
-                    self.position.undo_second_best();
-                    eval
-                }
-                BitboardMove::StoneMove(smove) => {
-                    // Enable for testing purposes.
-                    // self.position
-                    //     .try_make_move(bmove.to_player_move(&self.position))
-                    //     .unwrap();
-                    self.position.make_stone_move(smove);
-                    let eval = -self.negamax(depth - 1, -beta, -alpha);
-                    self.position.unmake_stone_move();
-                    eval
-                }
+            // Enable for testing purposes.
+            // self.position
+            //     .try_make_move(bmove.to_player_move(&self.position))
+            //     .unwrap();
+            self.position.make_move(bmove);
+            let next_depth = if matches!(bmove, crate::position::BitboardMove::SecondBest) {
+                //  Search lines where we "Second Best!" a little longer.
+                depth
+            } else {
+                depth - 1
             };
+            let eval = -self.negamax(next_depth, -beta, -alpha);
+            self.position.unmake_move();
             if eval > best_score {
                 best_move = Some(bmove);
                 best_score = eval;
@@ -139,8 +137,13 @@ impl Solver {
                     _ => EntryType::Exact,
                 },
             };
-            self.t_table
-                .store(&self.position, best_score, best_move, entry_type, depth);
+            self.t_table.store(
+                &self.position,
+                best_score,
+                best_move,
+                entry_type,
+                self.position.ply(),
+            );
         }
         best_score
     }

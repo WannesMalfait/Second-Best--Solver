@@ -88,7 +88,7 @@ pub struct Entry {
     score: i16,
     best_move: TTMove,
     entry_type: EntryType,
-    depth: u8,
+    ply: u8,
 }
 
 impl Entry {
@@ -97,13 +97,13 @@ impl Entry {
         score: i16,
         best_move: BitboardMove,
         entry_type: EntryType,
-        depth: u8,
+        ply: u8,
     ) -> Self {
         Self {
             score,
             best_move: TTMove::from_bitboard_move(pos, best_move),
             entry_type,
-            depth,
+            ply,
         }
     }
 
@@ -129,8 +129,8 @@ impl Entry {
         self.entry_type
     }
 
-    pub fn depth(&self) -> usize {
-        self.depth as usize
+    pub fn ply(&self) -> usize {
+        self.ply as usize
     }
 }
 
@@ -232,7 +232,7 @@ impl TranspositionTable {
         score: isize,
         best_move: BitboardMove,
         entry_type: EntryType,
-        depth: usize,
+        ply: usize,
     ) {
         let key = Self::key(pos);
         let index = self.index(key);
@@ -241,8 +241,8 @@ impl TranspositionTable {
             ExplainableEval::Win(_) => score + pos.ply() as isize,
             ExplainableEval::Loss(_) => score - pos.ply() as isize,
         };
-        self.entries[index] = Entry::new(pos, score as i16, best_move, entry_type, depth as u8);
         self.keys[index] = key;
+        self.entries[index] = Entry::new(pos, score as i16, best_move, entry_type, ply as u8);
     }
 
     /// Try to get a stored score from the transposition table.

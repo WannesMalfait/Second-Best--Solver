@@ -1,7 +1,7 @@
 use crate::position::{Color, Position};
 
 pub const WIN: isize = 1000;
-pub const IS_WIN: isize = WIN - Position::MAX_MOVES as isize;
+pub const IS_WIN: isize = WIN - 2 * Position::MAX_MOVES as isize;
 pub const LOSS: isize = -WIN;
 pub const IS_LOSS: isize = -IS_WIN;
 
