@@ -134,6 +134,9 @@ impl Entry {
     }
 }
 
+type Key = u64;
+type PartialKey = u32;
+
 /// Simple implementation of a transposition table.
 /// The idea is that multiple move orders can lead
 /// to the same position. By caching positions in
@@ -143,15 +146,27 @@ impl Entry {
 /// deepening loop to get a quicker result.
 pub struct TranspositionTable {
     entries: Box<[Entry]>,
-    keys: Box<[u64]>,
+    /// We store the keys in the table as well,
+    /// to be able to detect collisions.
+    /// We only store a truncated key as that is
+    /// enough to ensure we don't retreive a wrong
+    /// entry from the table.
+    /// This works because of the Chinese remainder
+    /// theorem: since 2^32 and the size of the
+    /// transposition table are coprime, there is
+    /// a unique key less than 2^32*size such that
+    /// key % 2^32 = key % size.
+    keys: Box<[PartialKey]>,
 }
 
 impl Default for TranspositionTable {
     fn default() -> Self {
         Self {
             entries: (0..Self::SIZE).map(|_| Entry::default()).collect(),
-            // Ensure that the inital keys stored are not valid.
-            keys: (0..Self::SIZE).map(|_| Self::SIZE as u64 + 1).collect(),
+            // Ensure that the initial keys stored are not valid.
+            keys: (0..Self::SIZE)
+                .map(|_| Self::SIZE as PartialKey + 1)
+                .collect(),
         }
     }
 }
@@ -189,7 +204,7 @@ impl TranspositionTable {
     const SIZE: usize = next_prime(1 << 23) as usize;
 
     #[inline(always)]
-    fn index(&self, key: u64) -> usize {
+    fn index(&self, key: Key) -> usize {
         // Make the keys a bit more spread out.
         key as usize % Self::SIZE
     }
@@ -209,7 +224,7 @@ impl TranspositionTable {
     ///
     /// Because of "Second Best!" we also need to know the last
     /// move, and whether or not "Second Best!" is possible.
-    pub fn key(pos: &Position) -> u64 {
+    pub fn key(pos: &Position) -> Key {
         let u32mask = 0xFFFF_FFFF;
         let last_move_info = match pos.last_stone_move() {
             Some(smove) => smove & !u32mask,
@@ -241,8 +256,8 @@ impl TranspositionTable {
             ExplainableEval::Win(_) => score + pos.ply() as isize,
             ExplainableEval::Loss(_) => score - pos.ply() as isize,
         };
-        self.keys[index] = key;
         self.entries[index] = Entry::new(pos, score as i16, best_move, entry_type, ply as u8);
+        self.keys[index] = key as PartialKey;
     }
 
     /// Try to get a stored score from the transposition table.
@@ -250,7 +265,7 @@ impl TranspositionTable {
     pub fn get(&self, pos: &Position) -> Option<Entry> {
         let key = Self::key(pos);
         let index = self.index(key);
-        if self.keys[index] == key {
+        if self.keys[index] == key as PartialKey {
             return Some(self.entries[index]);
         }
         None
