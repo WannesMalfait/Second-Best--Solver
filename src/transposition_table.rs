@@ -1,5 +1,5 @@
 use crate::{
-    eval::{self, decode_eval, ExplainableEval},
+    eval,
     position::{BitboardMove, PlayerMove, Position},
 };
 
@@ -110,9 +110,9 @@ impl Entry {
     /// The score for mate evals depends on the ply.
     pub fn score(&self, ply: isize) -> isize {
         if self.score as isize >= eval::IS_WIN {
-            self.score as isize - ply
+            self.score as isize - ply + self.ply as isize
         } else if self.score as isize <= eval::IS_LOSS {
-            self.score as isize + ply
+            self.score as isize + ply - self.ply as isize
         } else {
             self.score as isize
         }
@@ -247,16 +247,10 @@ impl TranspositionTable {
         score: isize,
         best_move: BitboardMove,
         entry_type: EntryType,
-        ply: usize,
     ) {
         let key = Self::key(pos);
         let index = self.index(key);
-        let score = match decode_eval(score, pos.ply() as isize) {
-            ExplainableEval::Undetermined(_) => score,
-            ExplainableEval::Win(_) => score + pos.ply() as isize,
-            ExplainableEval::Loss(_) => score - pos.ply() as isize,
-        };
-        self.entries[index] = Entry::new(pos, score as i16, best_move, entry_type, ply as u8);
+        self.entries[index] = Entry::new(pos, score as i16, best_move, entry_type, pos.ply() as u8);
         self.keys[index] = key as PartialKey;
     }
 
@@ -317,7 +311,7 @@ mod tests {
         for to in 0..8 {
             let bmove = BitboardMove::StoneMove(pos.stone_move(None, to));
 
-            tt.store(&pos, 0, bmove, EntryType::Exact, 0);
+            tt.store(&pos, 0, bmove, EntryType::Exact);
             assert_eq!(tt.get(&pos).unwrap().best_move(&pos), bmove);
             pos.make_move(bmove);
         }
@@ -331,7 +325,7 @@ mod tests {
             pos.make_move(bmove);
             pos.second_best();
             let bmove = BitboardMove::StoneMove(pos.stone_move(None, (1 + to) % 8));
-            tt.store(&pos, 0, bmove, EntryType::Exact, 0);
+            tt.store(&pos, 0, bmove, EntryType::Exact);
             assert_eq!(tt.get(&pos).unwrap().best_move(&pos), bmove);
             pos.make_move(bmove);
         }
@@ -354,13 +348,7 @@ mod tests {
         let mut tt = TranspositionTable::default();
         pos.make_phase_one_move(1);
         pos.make_phase_one_move(2);
-        tt.store(
-            &pos,
-            0,
-            BitboardMove::SecondBest,
-            EntryType::Undetermined,
-            0,
-        );
+        tt.store(&pos, 0, BitboardMove::SecondBest, EntryType::Undetermined);
         pos.unmake_move();
         pos.unmake_move();
         pos.make_phase_one_move(2);

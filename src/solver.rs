@@ -137,13 +137,8 @@ impl Solver {
                     _ => EntryType::Exact,
                 },
             };
-            self.t_table.store(
-                &self.position,
-                best_score,
-                best_move,
-                entry_type,
-                self.position.ply(),
-            );
+            self.t_table
+                .store(&self.position, best_score, best_move, entry_type);
         }
         best_score
     }
