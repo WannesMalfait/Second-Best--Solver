@@ -304,6 +304,26 @@ pub enum MoveFailed {
 }
 
 impl Position {
+    /// Get the color of the stone at the given location,
+    /// if there is no stone, None is returned.
+    pub fn stone_at(&self, stack_i: usize, height: usize) -> Option<Color> {
+        let spot_bb = Self::bb_of_spot(stack_i, height);
+        if 0 == (self.played_spots & spot_bb) {
+            // This spot hasn't been played yet.
+            return None;
+        }
+        match (self.our_spots & spot_bb) == 0 {
+            true => Some(self.current_player().other()),
+            false => Some(self.current_player()),
+        }
+    }
+
+    /// The bitboard with a one set of the given spot.
+    #[inline(always)]
+    pub fn bb_of_spot(stack_i: usize, height: usize) -> Bitboard {
+        Self::column_mask(stack_i) & Self::BOTTOM << height
+    }
+
     pub fn print_bb(bb: Bitboard) {
         for row in (0..(Self::STACK_HEIGHT + 1)).rev() {
             for col in 0..(Self::NUM_STACKS * 2) {

@@ -19,6 +19,18 @@ You can then interact through a CLI with the solver. Use the `help` command for 
 help
 ```
 
+### GUI
+
+It is also possible to use a GUI. For this you need to run
+
+```terminal
+cargo run --release --bin gui --features="gui"
+```
+
+WARNING: The linker is set to `lld` for faster compile times.
+You might need to install it on your system, or disable it from `.cargo/config.toml`. Additionally, the GUI depends on `bevy_egui`, and might hence require some
+dependencies to be installed on linux. See [the bevy docs](https://bevyengine.org/learn/book/getting-started/setup/) and [the bevy_egui docs](https://github.com/mvlabat/bevy_egui) for instructions.
+
 ## Current Progress
 
 To see the progress of the solver in the benchmarks look [here](./benchmark_results.md).
