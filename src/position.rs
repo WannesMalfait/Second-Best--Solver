@@ -729,6 +729,11 @@ impl Position {
 
     /// Returns true if the current player is lost.
     pub fn game_over(&self) -> bool {
+        // TODO: Actually possible for us to be winning on our turn,
+        // so this should return an enum instead.
+        // if self.has_alignment(true) {
+        // return Win;
+        // }
         if self.can_second_best() {
             return false;
         }

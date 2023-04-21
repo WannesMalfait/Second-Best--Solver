@@ -16,8 +16,42 @@ fn main() {
 #[derive(Default, Resource)]
 struct UiState {
     pos: position::Position,
-    // Spot on the board where we started dragging from.
+    /// Index of the current move we are looking at.
+    curr_move: Option<usize>,
+    /// List of all the moves played.
+    moves_played: Vec<position::PlayerMove>,
+    /// Spot on the board where we started dragging from.
     drag_start: Option<(usize, usize)>,
+}
+
+impl UiState {
+    fn make_move(&mut self, pmove: position::PlayerMove) {
+        if let Some(curr_move) = self.curr_move {
+            // Shorten the moves list to the current move,
+            // since the move to be played is in that position.
+            self.moves_played.truncate(curr_move + 1);
+        }
+        self.pos
+            .try_make_move(pmove)
+            .expect("Move given should be valid");
+        self.moves_played.push(pmove);
+        self.curr_move = match self.curr_move {
+            None => Some(0),
+            Some(n) => Some(n + 1),
+        };
+    }
+
+    fn set_curr_move(&mut self, move_index: Option<usize>) {
+        self.curr_move = move_index;
+        self.pos = position::Position::default();
+        if let Some(move_i) = move_index {
+            for pmove in &self.moves_played[0..=move_i] {
+                self.pos
+                    .try_make_move(*pmove)
+                    .expect("Move given should be valid");
+            }
+        }
+    }
 }
 
 struct SpotColor {}
@@ -30,6 +64,70 @@ impl SpotColor {
 
 fn draw_board(mut contexts: EguiContexts, mut ui_state: ResMut<UiState>) {
     let ctx = contexts.ctx_mut();
+    egui::SidePanel::right("Move list").show(ctx, |ui| {
+        ui.heading("Moves Panel");
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            egui::Grid::new("Moves list").show(ui, |ui| {
+                let mut selected_move = None;
+                // Labels for the columns.
+                ui.label("Turn Number");
+                ui.label("Black Move");
+                ui.label("White Move");
+                ui.end_row();
+                for (i, pmove) in ui_state.moves_played.iter().enumerate() {
+                    if i % 2 == 0 {
+                        // Every row, show the turn number.
+                        ui.label(format!("{}.", i / 2 + 1));
+                    }
+                    if ui
+                        .add_sized(
+                            ui.available_size(),
+                            egui::SelectableLabel::new(
+                                Some(i) == ui_state.curr_move,
+                                pmove.to_string(),
+                            ),
+                        )
+                        .clicked()
+                    {
+                        selected_move = Some(i);
+                    };
+                    if i % 2 == 1 {
+                        // Every two moves we have a new row.
+                        ui.end_row();
+                    }
+                }
+                if selected_move.is_some() {
+                    ui_state.set_curr_move(selected_move);
+                }
+            });
+        });
+        ui.separator();
+        egui::TopBottomPanel::bottom("Position Information").show_inside(ui, |ui| {
+            ui.heading("Position Information");
+            if let Some(bmove) = ui_state.pos.banned_move() {
+                ui.label(format!(
+                    "Banned move: {}",
+                    position::BitboardMove::StoneMove(bmove).to_string(&ui_state.pos),
+                ));
+            } else {
+                ui.label("No banned move");
+            }
+            if ui_state.pos.has_alignment(false) {
+                ui.label(format!(
+                    "{} has an alignment",
+                    match ui_state.pos.current_player().other() {
+                        position::Color::Black => "Black",
+                        position::Color::White => "White",
+                    }
+                ));
+            } else {
+                ui.label("No alignments");
+            }
+            if ui_state.pos.game_over() {
+                ui.label(egui::RichText::new("Game Over!").font(egui::FontId::proportional(40.0)));
+            }
+        });
+    });
     egui::CentralPanel::default().show(ctx, |ui| {
         let (response, painter) =
             ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
@@ -60,10 +158,10 @@ fn draw_board(mut contexts: EguiContexts, mut ui_state: ResMut<UiState>) {
             )
             .clicked()
         {
-            ui_state.pos.second_best();
+            ui_state.make_move(position::PlayerMove::SecondBest);
         }
 
-        let available_spots = match ui_state.drag_start {
+        let mut available_spots = match ui_state.drag_start {
             None => {
                 if ui_state.pos.is_second_phase() {
                     ui_state.pos.from_spots(true)
@@ -80,12 +178,22 @@ fn draw_board(mut contexts: EguiContexts, mut ui_state: ResMut<UiState>) {
                     position::Position::column_mask(stack + position::Position::OPPOSITE);
                 let possible_to = left | right | opposite;
                 if let Some(banned_move) = ui_state.pos.banned_move() {
-                    ui_state.pos.free_spots() & possible_to & !banned_move
+                    if (banned_move & position::Position::column_mask(stack)) != 0 {
+                        // Banned move starts at the current "from" stack, so ensure that
+                        // we don't play the banned move.
+                        ui_state.pos.free_spots() & possible_to & !banned_move
+                    } else {
+                        ui_state.pos.free_spots() & possible_to
+                    }
                 } else {
                     ui_state.pos.free_spots() & possible_to
                 }
             }
         };
+        if ui_state.pos.has_alignment(false) {
+            // No legal moves
+            available_spots = 0;
+        }
         // Calculate where all the spots are.
         let spot_radius = board_radius / 10.0;
         for stack_index in 0..8 {
@@ -110,6 +218,7 @@ fn draw_board(mut contexts: EguiContexts, mut ui_state: ResMut<UiState>) {
                     None => SpotColor::EMPTY,
                     Some(color) => {
                         if Some((stack_index, offset)) == ui_state.drag_start {
+                            // Don't show the stone here since we are dragging it somewhere else.
                             SpotColor::FROM
                         } else {
                             match color {
@@ -120,7 +229,13 @@ fn draw_board(mut contexts: EguiContexts, mut ui_state: ResMut<UiState>) {
                     }
                 };
                 let stroke = if spot_available {
-                    egui::Stroke::new(2.0, egui::Color32::GREEN)
+                    match ui_state.pos.current_player() {
+                        position::Color::White => {
+                            // Need more contrast in this case.
+                            egui::Stroke::new(2.0, egui::Color32::RED)
+                        }
+                        position::Color::Black => egui::Stroke::new(2.0, egui::Color32::GREEN),
+                    }
                 } else {
                     egui::Stroke::NONE
                 };
@@ -134,14 +249,18 @@ fn draw_board(mut contexts: EguiContexts, mut ui_state: ResMut<UiState>) {
                             if ui_state.pos.is_second_phase() {
                                 ui_state.drag_start = Some((stack_index, offset));
                             } else {
-                                let smove = ui_state.pos.stone_move(None, stack_index);
-                                ui_state.pos.make_stone_move(smove);
+                                ui_state.make_move(position::PlayerMove::StoneMove {
+                                    from: None,
+                                    to: stack_index,
+                                });
                             }
                         }
                         if response.drag_released() {
                             if let Some((from_stack, _)) = ui_state.drag_start {
-                                let smove = ui_state.pos.stone_move(Some(from_stack), stack_index);
-                                ui_state.pos.make_stone_move(smove);
+                                ui_state.make_move(position::PlayerMove::StoneMove {
+                                    from: Some(from_stack),
+                                    to: stack_index,
+                                });
                             }
                         }
                     }
