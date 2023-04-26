@@ -7,13 +7,42 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugin(EguiPlugin)
         .init_resource::<UiState>()
+        .init_resource::<SolverOutput>()
+        .add_startup_system(launch_solver)
         // Systems that create Egui widgets should be run during the `CoreSet::Update` set,
         // or after the `EguiSet::BeginFrame` system (which belongs to the `CoreSet::PreUpdate` set).
         .add_system(draw_board)
+        .add_system(log_solver_output)
         .run();
 }
 
 #[derive(Default, Resource)]
+struct SolverOutput {
+    msgs: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+fn log_solver_output(reader: Res<SolverOutput>) {
+    let mut msgs = reader.msgs.lock().unwrap();
+    for msg in msgs.iter() {
+        println!("{}", msg);
+    }
+    msgs.clear();
+}
+
+#[derive(Resource)]
+struct Channel {
+    stdin: std::process::ChildStdin,
+}
+
+impl Drop for Channel {
+    fn drop(&mut self) {
+        use std::io::Write;
+        // Tell the solver to quit as well!
+        writeln!(self.stdin, "quit").unwrap();
+    }
+}
+
+#[derive(Resource)]
 struct UiState {
     pos: position::Position,
     /// Index of the current move we are looking at.
@@ -22,6 +51,20 @@ struct UiState {
     moves_played: Vec<position::PlayerMove>,
     /// Spot on the board where we started dragging from.
     drag_start: Option<(usize, usize)>,
+    /// The depth to search the analyis in.
+    depth: usize,
+}
+
+impl Default for UiState {
+    fn default() -> Self {
+        Self {
+            pos: position::Position::default(),
+            curr_move: None,
+            moves_played: vec![],
+            drag_start: None,
+            depth: 10,
+        }
+    }
 }
 
 impl UiState {
@@ -62,12 +105,36 @@ impl SpotColor {
     const WHITE: egui::Color32 = egui::Color32::from_gray(210);
 }
 
-fn draw_board(mut contexts: EguiContexts, mut ui_state: ResMut<UiState>) {
+fn launch_solver(solver_output: Res<SolverOutput>, mut commands: Commands) {
+    let path = "./target/release/second-best";
+    let mut child = std::process::Command::new(path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let stdin = child.stdin.take().unwrap();
+    commands.insert_resource(Channel { stdin });
+    let msgs = solver_output.msgs.clone();
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        let reader = std::io::BufReader::new(stdout);
+        for line in reader.lines() {
+            msgs.lock().unwrap().push(line.unwrap());
+        }
+    });
+}
+
+fn draw_board(
+    mut contexts: EguiContexts,
+    mut ui_state: ResMut<UiState>,
+    mut channel: ResMut<Channel>,
+) {
     let ctx = contexts.ctx_mut();
     egui::SidePanel::right("Move list").show(ctx, |ui| {
         ui.heading("Moves Panel");
         egui::ScrollArea::vertical().show(ui, |ui| {
-            egui::Grid::new("Moves list").show(ui, |ui| {
+            egui::Grid::new("Moves list").striped(true).show(ui, |ui| {
                 let mut selected_move = None;
                 // Labels for the columns.
                 ui.label("Turn Number");
@@ -125,6 +192,48 @@ fn draw_board(mut contexts: EguiContexts, mut ui_state: ResMut<UiState>) {
             }
             if ui_state.pos.game_over() {
                 ui.label(egui::RichText::new("Game Over!").font(egui::FontId::proportional(40.0)));
+            }
+        });
+        egui::TopBottomPanel::top("Solver Controls").show_inside(ui, |ui| {
+            ui.heading("Solver Controls");
+            ui.horizontal(|ui| {
+                ui.label("Solver Depth");
+                let response =
+                    ui.add(egui::DragValue::new(&mut ui_state.depth).clamp_range(1..=25));
+                response.on_hover_text("The depth to search to");
+            });
+            if ui
+                .button("eval")
+                .on_hover_text("Get the evaluation for the current position")
+                .clicked()
+            {
+                use std::io::Write;
+                // Stop any previous searches.
+                writeln!(channel.stdin, "stop").unwrap();
+                // Set to the correct position.
+                if let Some(curr_move) = ui_state.curr_move {
+                    writeln!(
+                        channel.stdin,
+                        "set-pos {}",
+                        ui_state.moves_played[..=curr_move]
+                            .iter()
+                            .map(|s| s.to_string())
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(channel.stdin, "set-pos").unwrap();
+                }
+                writeln!(channel.stdin, "eval {}", ui_state.depth).unwrap();
+            }
+            if ui
+                .button("Stop")
+                .on_hover_text("Stop any currently running searches")
+                .clicked()
+            {
+                use std::io::Write;
+                writeln!(channel.stdin, "stop").unwrap();
             }
         });
     });
