@@ -133,41 +133,44 @@ fn draw_board(
     let ctx = contexts.ctx_mut();
     egui::SidePanel::right("Move list").show(ctx, |ui| {
         ui.heading("Moves Panel");
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            egui::Grid::new("Moves list").striped(true).show(ui, |ui| {
-                let mut selected_move = None;
-                // Labels for the columns.
-                ui.label("Turn Number");
-                ui.label("Black Move");
-                ui.label("White Move");
-                ui.end_row();
-                for (i, pmove) in ui_state.moves_played.iter().enumerate() {
-                    if i % 2 == 0 {
-                        // Every row, show the turn number.
-                        ui.label(format!("{}.", i / 2 + 1));
+        egui::ScrollArea::vertical()
+            .max_height(ui.available_height() / 2.0)
+            .stick_to_bottom(true)
+            .show(ui, |ui| {
+                egui::Grid::new("Moves list").striped(true).show(ui, |ui| {
+                    let mut selected_move = None;
+                    // Labels for the columns.
+                    ui.label("Turn Number");
+                    ui.label("Black Move");
+                    ui.label("White Move");
+                    ui.end_row();
+                    for (i, pmove) in ui_state.moves_played.iter().enumerate() {
+                        if i % 2 == 0 {
+                            // Every row, show the turn number.
+                            ui.label(format!("{}.", i / 2 + 1));
+                        }
+                        if ui
+                            .add_sized(
+                                ui.available_size(),
+                                egui::SelectableLabel::new(
+                                    Some(i) == ui_state.curr_move,
+                                    pmove.to_string(),
+                                ),
+                            )
+                            .clicked()
+                        {
+                            selected_move = Some(i);
+                        };
+                        if i % 2 == 1 {
+                            // Every two moves we have a new row.
+                            ui.end_row();
+                        }
                     }
-                    if ui
-                        .add_sized(
-                            ui.available_size(),
-                            egui::SelectableLabel::new(
-                                Some(i) == ui_state.curr_move,
-                                pmove.to_string(),
-                            ),
-                        )
-                        .clicked()
-                    {
-                        selected_move = Some(i);
-                    };
-                    if i % 2 == 1 {
-                        // Every two moves we have a new row.
-                        ui.end_row();
+                    if selected_move.is_some() {
+                        ui_state.set_curr_move(selected_move);
                     }
-                }
-                if selected_move.is_some() {
-                    ui_state.set_curr_move(selected_move);
-                }
+                });
             });
-        });
         ui.separator();
         egui::TopBottomPanel::bottom("Position Information").show_inside(ui, |ui| {
             ui.heading("Position Information");
