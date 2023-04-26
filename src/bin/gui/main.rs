@@ -8,6 +8,7 @@ fn main() {
         .add_plugin(EguiPlugin)
         .init_resource::<UiState>()
         .init_resource::<SolverOutput>()
+        .add_event::<SolverInfo>()
         .add_startup_system(launch_solver)
         // Systems that create Egui widgets should be run during the `CoreSet::Update` set,
         // or after the `EguiSet::BeginFrame` system (which belongs to the `CoreSet::PreUpdate` set).
@@ -21,10 +22,45 @@ struct SolverOutput {
     msgs: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
 }
 
-fn log_solver_output(reader: Res<SolverOutput>) {
+enum SolverInfo {
+    SearchStats(SearchStats),
+    Pv { moves: Vec<String> },
+}
+
+#[derive(Clone)]
+struct SearchStats {
+    depth: usize,
+    score: isize,
+    knps: usize,
+}
+
+fn log_solver_output(reader: Res<SolverOutput>, mut writer: EventWriter<SolverInfo>) {
     let mut msgs = reader.msgs.lock().unwrap();
     for msg in msgs.iter() {
         println!("{}", msg);
+        if msg.starts_with("info") {
+            let mut stats = msg.split_whitespace();
+            stats.next();
+            // Depth
+            assert_eq!(stats.next(), Some("depth"));
+            let depth = stats.next().unwrap().parse().unwrap();
+            // Score
+            assert_eq!(stats.next(), Some("score"));
+            let score = stats.next().unwrap().parse().unwrap();
+            // Nodes
+            assert_eq!(stats.next(), Some("nodes"));
+            let _nodes = stats.next().unwrap();
+            // Knps
+            assert_eq!(stats.next(), Some("knps"));
+            let knps = stats.next().unwrap().parse().unwrap();
+            writer.send(SolverInfo::SearchStats(SearchStats { depth, score, knps }));
+        } else if msg.starts_with("pv") {
+            let mut info = msg.split_whitespace();
+            info.next();
+            writer.send(SolverInfo::Pv {
+                moves: info.map(|s| s.to_string()).collect(),
+            });
+        }
     }
     msgs.clear();
 }
@@ -53,6 +89,10 @@ struct UiState {
     drag_start: Option<(usize, usize)>,
     /// The depth to search the analyis in.
     depth: usize,
+    /// PV
+    pv: Vec<String>,
+    /// Info about the search
+    search_stats: Option<SearchStats>,
 }
 
 impl Default for UiState {
@@ -63,6 +103,8 @@ impl Default for UiState {
             moves_played: vec![],
             drag_start: None,
             depth: 10,
+            pv: vec![],
+            search_stats: None,
         }
     }
 }
@@ -82,9 +124,15 @@ impl UiState {
             None => Some(0),
             Some(n) => Some(n + 1),
         };
+        // Out of date.
+        self.pv = vec![];
+        self.search_stats = None;
     }
 
     fn set_curr_move(&mut self, move_index: Option<usize>) {
+        if self.curr_move == move_index {
+            return;
+        }
         self.curr_move = move_index;
         self.pos = position::Position::default();
         if let Some(move_i) = move_index {
@@ -94,6 +142,8 @@ impl UiState {
                     .expect("Move given should be valid");
             }
         }
+        self.pv = vec![];
+        self.search_stats = None;
     }
 }
 
@@ -129,7 +179,18 @@ fn draw_board(
     mut contexts: EguiContexts,
     mut ui_state: ResMut<UiState>,
     mut channel: ResMut<Channel>,
+    mut reader: EventReader<SolverInfo>,
 ) {
+    for info in reader.iter() {
+        match info {
+            SolverInfo::SearchStats(stats) => {
+                ui_state.search_stats = Some(stats.clone());
+            }
+            SolverInfo::Pv { moves } => {
+                ui_state.pv = moves.clone();
+            }
+        }
+    }
     let ctx = contexts.ctx_mut();
     egui::SidePanel::right("Move list").show(ctx, |ui| {
         ui.heading("Moves Panel");
@@ -237,6 +298,38 @@ fn draw_board(
             {
                 use std::io::Write;
                 writeln!(channel.stdin, "stop").unwrap();
+            }
+            ui.separator();
+            ui.heading("Search information");
+            ui.horizontal_wrapped(|ui| {
+                if ui_state.pv.is_empty() {
+                    ui.label("No search information yet. Start the solver to get information...");
+                    return;
+                }
+                ui.label("PV: ");
+                let offset = match ui_state.curr_move {
+                    Some(m) => m as isize,
+                    None => -1,
+                };
+                if offset % 2 == 0 {
+                    ui.label(format!("{}.", offset / 2 + 1));
+                    ui.label("...");
+                }
+                for (i, smove) in ui_state.pv.iter().enumerate() {
+                    if (offset + i as isize + 1) % 2 == 0 {
+                        ui.label(format!("{}.", (i as isize + offset + 1) / 2 + 1));
+                    }
+                    ui.selectable_label(false, smove).clicked();
+                }
+            });
+            if let Some(stats) = &ui_state.search_stats {
+                ui.label(format!("Depth: {}", stats.depth));
+                ui.label(format!("Knps: {}", stats.knps));
+                ui.label(second_best::eval::explain_eval(
+                    ui_state.pos.current_player(),
+                    stats.score,
+                    ui_state.pos.ply() as isize,
+                ));
             }
         });
     });

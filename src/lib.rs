@@ -1,6 +1,6 @@
 mod bench;
 pub mod cli;
-mod eval;
+pub mod eval;
 mod movegen;
 pub mod position;
 pub mod solver;
