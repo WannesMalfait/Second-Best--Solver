@@ -14,6 +14,7 @@ fn main() {
         // or after the `EguiSet::BeginFrame` system (which belongs to the `CoreSet::PreUpdate` set).
         .add_system(draw_board)
         .add_system(log_solver_output)
+        .add_system(keyboard_input)
         .run();
 }
 
@@ -110,6 +111,13 @@ impl Default for UiState {
 }
 
 impl UiState {
+    /// Safe variant which checks if the move is valid first.
+    fn try_make_move(&mut self, pmove: position::PlayerMove) {
+        let mut pos = self.pos.clone();
+        if pos.try_make_move(pmove).is_ok() {
+            self.make_move(pmove);
+        }
+    }
     fn make_move(&mut self, pmove: position::PlayerMove) {
         if let Some(curr_move) = self.curr_move {
             // Shorten the moves list to the current move,
@@ -120,10 +128,7 @@ impl UiState {
             .try_make_move(pmove)
             .expect("Move given should be valid");
         self.moves_played.push(pmove);
-        self.curr_move = match self.curr_move {
-            None => Some(0),
-            Some(n) => Some(n + 1),
-        };
+        self.go_forward_one_move();
         // Out of date.
         self.pv = vec![];
         self.search_stats = None;
@@ -144,6 +149,34 @@ impl UiState {
         }
         self.pv = vec![];
         self.search_stats = None;
+    }
+
+    fn go_back_one_move(&mut self) {
+        match self.curr_move {
+            None => (),
+            Some(n) => {
+                if n == 0 {
+                    self.set_curr_move(None)
+                } else {
+                    self.set_curr_move(Some(n - 1))
+                }
+            }
+        }
+    }
+
+    fn go_forward_one_move(&mut self) {
+        match self.curr_move {
+            None => {
+                if !self.moves_played.is_empty() {
+                    self.set_curr_move(Some(0))
+                }
+            }
+            Some(n) => {
+                if self.moves_played.len() > n + 1 {
+                    self.set_curr_move(Some(n + 1));
+                }
+            }
+        }
     }
 }
 
@@ -497,4 +530,42 @@ fn draw_board(
             );
         }
     });
+}
+
+fn keyboard_input(mut ui_state: ResMut<UiState>, keyboard: Res<Input<KeyCode>>) {
+    for key in keyboard.get_just_pressed() {
+        match key {
+            // TODO: Handle second phase of the game
+            KeyCode::Key0 | KeyCode::Numpad0 => {
+                ui_state.try_make_move(position::PlayerMove::StoneMove { from: None, to: 0 })
+            }
+            KeyCode::Key1 | KeyCode::Numpad1 => {
+                ui_state.try_make_move(position::PlayerMove::StoneMove { from: None, to: 1 })
+            }
+            KeyCode::Key2 | KeyCode::Numpad2 => {
+                ui_state.try_make_move(position::PlayerMove::StoneMove { from: None, to: 2 })
+            }
+            KeyCode::Key3 | KeyCode::Numpad3 => {
+                ui_state.try_make_move(position::PlayerMove::StoneMove { from: None, to: 3 })
+            }
+            KeyCode::Key4 | KeyCode::Numpad4 => {
+                ui_state.try_make_move(position::PlayerMove::StoneMove { from: None, to: 4 })
+            }
+            KeyCode::Key5 | KeyCode::Numpad5 => {
+                ui_state.try_make_move(position::PlayerMove::StoneMove { from: None, to: 5 })
+            }
+            KeyCode::Key6 | KeyCode::Numpad6 => {
+                ui_state.try_make_move(position::PlayerMove::StoneMove { from: None, to: 6 })
+            }
+            KeyCode::Key7 | KeyCode::Numpad7 => {
+                ui_state.try_make_move(position::PlayerMove::StoneMove { from: None, to: 7 })
+            }
+            KeyCode::Back => ui_state.try_make_move(position::PlayerMove::SecondBest),
+            KeyCode::Left => ui_state.go_back_one_move(),
+            KeyCode::Right => ui_state.go_forward_one_move(),
+            // TODO: Enter for starting search
+            //       Space for stopping search
+            _ => (),
+        }
+    }
 }
