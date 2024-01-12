@@ -250,7 +250,74 @@ impl TranspositionTable {
     ) {
         let key = Self::key(pos);
         let index = self.index(key);
-        self.entries[index] = Entry::new(pos, score as i16, best_move, entry_type, pos.ply() as u8);
+        if self.keys[index] == key as PartialKey {
+            let old_entry = self.entries[index];
+            let old_score = old_entry.score(pos.ply() as isize);
+            match old_entry.entry_type() {
+                EntryType::Undetermined => {
+                    // Can overwrite safely.
+                }
+                EntryType::Exact => {
+                    if entry_type == EntryType::Exact && old_score != score {
+                        println!("Uh oh, tried to set {old_score} to {score}");
+                    }
+                    // We already know the exact score.
+                    return;
+                }
+                EntryType::LowerBound => {
+                    match entry_type {
+                        EntryType::Undetermined => return,
+                        EntryType::Exact => {}
+                        EntryType::LowerBound => {
+                            if old_score >= score {
+                                // Not a better bound.
+                                return;
+                            }
+                        }
+                        EntryType::UpperBound => {
+                            // We prefer lower bounds.
+                            return;
+                        }
+                    }
+                }
+                EntryType::UpperBound => {
+                    match entry_type {
+                        EntryType::Undetermined => return,
+                        EntryType::Exact => {}
+                        EntryType::LowerBound => {}
+                        EntryType::UpperBound => {
+                            if old_score <= score {
+                                // Not a better bound.
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+            // if old_entry.entry_type() != EntryType::Undetermined {
+            //     if entry_type == EntryType::Undetermined {
+            //         return;
+            //     }
+            //     let s = match entry_type {
+            //         EntryType::Exact => "=",
+            //         EntryType::LowerBound => ">=",
+            //         EntryType::UpperBound => "<=",
+            //         EntryType::Undetermined => "?",
+            //     };
+            //     let os = match old_entry.entry_type() {
+            //         EntryType::Exact => "=",
+            //         EntryType::LowerBound => ">=",
+            //         EntryType::UpperBound => "<=",
+            //         EntryType::Undetermined => "?",
+            //     };
+            //     println!(
+            //         "Overwriting entry: old score: {os}{}, new score: {s}{score}",
+            //         old_entry.score(pos.ply() as isize)
+            //     );
+            // }
+        }
+        let entry = Entry::new(pos, score as i16, best_move, entry_type, pos.ply() as u8);
+        self.entries[index] = entry;
         self.keys[index] = key as PartialKey;
     }
 

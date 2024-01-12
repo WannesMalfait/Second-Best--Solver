@@ -69,6 +69,14 @@ impl Solver {
             // If we find the entry in a direct way, the score can be used.
             if tt_entry.ply() >= self.position.ply() {
                 let score = tt_entry.score(self.position.ply() as isize);
+                // if score.abs() == 968 {
+                //     println!(
+                //         "Retreived at ply {}, (stored at ply {}) ({:?})",
+                //         self.position.ply(),
+                //         tt_entry.ply(),
+                //         tt_entry.entry_type(),
+                //     );
+                // }
                 match tt_entry.entry_type() {
                     EntryType::Undetermined => (),
                     EntryType::Exact => {
@@ -116,6 +124,9 @@ impl Solver {
                 depth - 1
             };
             let eval = -self.negamax(next_depth, -beta, -alpha);
+            // if eval.abs() == 968 {
+            //     println!("Here at ply {}", self.position.ply());
+            // }
             self.position.unmake_move();
             if eval > best_score {
                 best_move = Some(bmove);
@@ -132,8 +143,8 @@ impl Solver {
             let entry_type = match eval::decode_eval(best_score, self.position.ply() as isize) {
                 eval::ExplainableEval::Undetermined(_) => EntryType::Undetermined,
                 eval::ExplainableEval::Win(_) | eval::ExplainableEval::Loss(_) => match () {
-                    _ if best_score <= initial_alpha => EntryType::UpperBound,
                     _ if best_score >= initial_beta => EntryType::LowerBound,
+                    _ if best_score <= initial_alpha => EntryType::UpperBound,
                     _ => EntryType::Exact,
                 },
             };
