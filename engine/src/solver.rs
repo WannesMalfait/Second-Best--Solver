@@ -1,4 +1,5 @@
 use crate::eval;
+use crate::eval::explain_eval;
 use crate::movegen;
 use crate::position::GameStatus;
 use crate::position::Position;
@@ -72,34 +73,26 @@ impl Solver {
             // If we find the entry in a direct way, the score can be used.
             if tt_entry.ply() >= self.position.ply() {
                 let score = tt_entry.score(self.position.ply() as isize);
-                // if score.abs() == 968 {
-                //     println!(
-                //         "Retreived at ply {}, (stored at ply {}) ({:?})",
-                //         self.position.ply(),
-                //         tt_entry.ply(),
-                //         tt_entry.entry_type(),
-                //     );
-                // }
                 match tt_entry.entry_type() {
                     EntryType::Undetermined => (),
                     EntryType::Exact => {
                         return score;
                     }
                     EntryType::UpperBound => {
-                        if beta > score {
-                            beta = score;
-                            if score <= alpha {
-                                return score;
-                            }
-                        }
+                        // if beta > score {
+                        //     beta = score;
+                        //     if score <= alpha {
+                        //         return score;
+                        //     }
+                        // }
                     }
                     EntryType::LowerBound => {
-                        if alpha < score {
-                            alpha = score;
-                            if score >= beta {
-                                return score;
-                            }
-                        }
+                        // if alpha < score {
+                        //     alpha = score;
+                        //     if score >= beta {
+                        //         return score;
+                        //     }
+                        // }
                     }
                 }
             }
@@ -109,17 +102,31 @@ impl Solver {
         // We already checked that we aren't lost now, so worst case we lose next ply.
         let mut best_score = eval::loss_score(self.position.ply() as isize + 1);
         if best_score >= beta {
+            println!("beta cutoff {best_score} >= {beta} (initial = {initial_beta})");
+            println!(
+                "{}",
+                explain_eval(
+                    self.position.current_player(),
+                    best_score,
+                    self.position.ply() as isize,
+                )
+            );
+            self.position.show();
+            println!("ply {}", self.position.ply());
             return best_score;
         }
 
         // Look at the child nodes:
         let moves = movegen::MoveGen::new(&self.position, best_move);
         for bmove in moves {
-            // Enable for testing purposes.
-            // self.position
-            //     .try_make_move(bmove.to_player_move(&self.position))
-            //     .unwrap();
-            self.position.make_move(bmove);
+            if cfg!(debug_assertions) {
+                // Validate moves in debug builds.
+                self.position
+                    .try_make_move(bmove.to_player_move(&self.position))
+                    .unwrap();
+            } else {
+                self.position.make_move(bmove);
+            }
             let next_depth = if matches!(bmove, crate::position::BitboardMove::SecondBest) {
                 //  Search lines where we "Second Best!" a little longer.
                 depth
@@ -127,9 +134,7 @@ impl Solver {
                 depth - 1
             };
             let eval = -self.negamax(next_depth, -beta, -alpha);
-            // if eval.abs() == 968 {
-            //     println!("Here at ply {}", self.position.ply());
-            // }
+
             self.position.unmake_move();
             if eval > best_score {
                 best_move = Some(bmove);
