@@ -230,6 +230,8 @@ impl TranspositionTable {
             Some(smove) => smove & !u32mask,
             None => 0,
         };
+        // If we can not second best, add a flag in a spot that is
+        // otherwise unused.
         let second_best_info = match pos.can_second_best() {
             true => last_move_info,
             false => last_move_info | (1 << 35),
@@ -414,14 +416,49 @@ mod tests {
         let mut pos = Position::default();
         let mut tt = TranspositionTable::default();
         pos.make_phase_one_move(1);
+        pos.make_phase_one_move(1);
         pos.make_phase_one_move(2);
+        pos.make_phase_one_move(2);
+        pos.show();
         tt.store(&pos, 0, BitboardMove::SecondBest, EntryType::Undetermined);
         pos.unmake_move();
         pos.unmake_move();
+        pos.unmake_move();
+        pos.unmake_move();
+        pos.make_phase_one_move(2);
         pos.make_phase_one_move(2);
         pos.make_phase_one_move(1);
+        pos.make_phase_one_move(1);
+        pos.show();
         // Even though the position is the "same", calling "Second Best!" would
         // have a different effect, and hence the score might be different.
         assert_eq!(tt.get(&pos), None);
+        pos.unmake_move();
+        pos.unmake_move();
+        pos.unmake_move();
+        pos.unmake_move();
+        pos.make_phase_one_move(1);
+        pos.make_phase_one_move(1);
+        pos.make_phase_one_move(2);
+        pos.make_phase_one_move(3);
+        pos.second_best();
+        pos.make_phase_one_move(2);
+        // Again the same position visually, but no second best can be called.
+        assert_eq!(tt.get(&pos), None);
+        pos.unmake_move();
+        pos.unmake_move();
+        pos.unmake_move();
+        pos.unmake_move();
+        pos.unmake_move();
+        pos.unmake_move();
+        pos.make_phase_one_move(1);
+        pos.make_phase_one_move(1);
+        pos.make_phase_one_move(1);
+        pos.second_best();
+        pos.make_phase_one_move(2);
+        pos.make_phase_one_move(2);
+        pos.show();
+        // This time the second best has no effect on the current position.
+        assert!(tt.get(&pos).is_some());
     }
 }
