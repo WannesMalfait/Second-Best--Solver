@@ -10,6 +10,13 @@ The official rules:
 Clone the repository and then compile and run the code with:
 
 ```terminal
+cargo run --release -p second-best-cli
+```
+
+or
+
+```terminal
+cd cli
 cargo run --release
 ```
 
@@ -24,11 +31,15 @@ help
 It is also possible to use a GUI. For this you need to run
 
 ```terminal
-cargo run --release --bin gui --features="gui"
+cargo run --release -p second-best-gui
 ```
 
-WARNING: The GUI depends on `bevy_egui`, and might hence require some
-dependencies to be installed on linux. See [the bevy docs](https://bevyengine.org/learn/book/getting-started/setup/) and [the bevy_egui docs](https://github.com/mvlabat/bevy_egui) for instructions.
+or
+
+```terminal
+cd gui
+cargo run --release
+```
 
 ## Current Progress
 
