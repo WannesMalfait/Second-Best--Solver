@@ -1,4 +1,6 @@
-use second_best::cli::Cli;
+mod bench;
+mod cli;
+use cli::Cli;
 
 fn main() {
     let mut buf;

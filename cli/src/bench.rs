@@ -1,9 +1,9 @@
-use crate::eval;
-use crate::eval::ExplainableEval;
-use crate::movegen;
-use crate::position::BitboardMove;
-use crate::position::Position;
-use crate::solver;
+use engine::eval;
+use engine::eval::ExplainableEval;
+use engine::movegen;
+use engine::position::BitboardMove;
+use engine::position::Position;
+use engine::solver;
 
 use std::io::{self, Write};
 use std::ops::Range;

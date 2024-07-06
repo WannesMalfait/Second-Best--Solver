@@ -1,3 +1,4 @@
+use crate::bench;
 use clap::{Args, Parser, Subcommand};
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -6,9 +7,9 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::vec::Vec;
 
-use crate::position::{MoveFailed, Position};
-use crate::solver::Solver;
-use crate::{bench, eval};
+use engine::eval;
+use engine::position::{MoveFailed, Position};
+use engine::solver::Solver;
 
 #[derive(Subcommand, Debug, PartialEq, Eq)]
 #[command(author, version, about, multicall = true)]

@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use second_best::solver;
+use engine::solver;
 
 pub fn solver_speed_begin(c: &mut Criterion) {
     let mut solver = solver::Solver::default();

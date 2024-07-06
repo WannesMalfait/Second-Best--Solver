@@ -1,0 +1,12 @@
+[package]
+name = "second-best-cli"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+description = "A solver for the board game: Second Best!"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+engine = { path = "../engine" }
+
+

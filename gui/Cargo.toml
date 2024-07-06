@@ -1,0 +1,8 @@
+[package]
+name = "second-best-gui"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+description = "A gui to play and analyze the board game: Second Best!"
+
+[dependencies]
