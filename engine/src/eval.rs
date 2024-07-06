@@ -23,7 +23,7 @@ pub fn static_eval(pos: &Position) -> isize {
     // Since the bitboards store two copies of the board,
     // we need to divide by 2.
     score /= 2;
-    if pos.has_alignment(false) {
+    if pos.has_alignment(Position::THEM) {
         // We don't check for us having an alignment, because that would already be a win.
         score -= 10;
     }
@@ -34,6 +34,12 @@ pub fn static_eval(pos: &Position) -> isize {
 #[inline]
 pub fn loss_score(ply: isize) -> isize {
     LOSS + ply
+}
+
+/// The evaluation of a win at the given ply.
+#[inline]
+pub fn win_score(ply: isize) -> isize {
+    WIN - ply
 }
 
 /// Turn the evaluation into a more digestible enum.

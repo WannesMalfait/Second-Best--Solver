@@ -2,6 +2,7 @@ use engine::eval;
 use engine::eval::ExplainableEval;
 use engine::movegen;
 use engine::position::BitboardMove;
+use engine::position::GameStatus;
 use engine::position::Position;
 use engine::solver;
 
@@ -81,7 +82,7 @@ fn generate_random_position(
         return None;
     }
     if solver.position.num_turns() < moves_range.start {
-        if solver.position.game_over() {
+        if solver.position.game_status() != GameStatus::OnGoing {
             // We are in a game over state, but not deep enough yet.
             return None;
         }

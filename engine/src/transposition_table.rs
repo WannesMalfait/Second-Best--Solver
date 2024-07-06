@@ -6,7 +6,7 @@ use crate::{
 /// A compact storage of a move in 8 bits.
 /// The bits are decomposed as follows:
 /// 1000_0000 -- Determines if the move is "Second Best!"
-/// 0111_0000 -- The column of the to spot.
+/// 0111_0000 -- The column of the "to" spot.
 /// 0000_1111 -- The column of the "from" spot.
 /// If the "from" spot is None, then 8 (0b0000_1000) is
 /// stored as the from spot.

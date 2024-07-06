@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
-use engine::position;
+use engine::position::{self, GameStatus};
 
 fn main() {
     App::new()
@@ -289,7 +289,7 @@ fn draw_board(
             } else {
                 ui.label("No alignments");
             }
-            if ui_state.pos.game_over() {
+            if ui_state.pos.game_status() != GameStatus::OnGoing {
                 ui.label(egui::RichText::new("Game Over!").font(egui::FontId::proportional(40.0)));
             }
         });

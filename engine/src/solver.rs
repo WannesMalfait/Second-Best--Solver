@@ -1,5 +1,6 @@
 use crate::eval;
 use crate::movegen;
+use crate::position::GameStatus;
 use crate::position::Position;
 use crate::transposition_table::EntryType;
 use crate::transposition_table::TranspositionTable;
@@ -44,15 +45,17 @@ impl Solver {
     /// Do an alpha beta negamax search on the current position.
     /// Returns the score of the current position.
     fn negamax(&mut self, depth: usize, mut alpha: isize, mut beta: isize) -> isize {
-        // Don't check this every node, but often often enough.
+        // Don't check this every node, but often enough.
         if self.nodes % 1024 == 0 && self.abort_search() {
             // Have to stop the search now.
             return 0;
         }
 
         self.nodes += 1;
-        if self.position.game_over() {
-            return eval::loss_score(self.position.ply() as isize);
+        match self.position.game_status() {
+            GameStatus::WeLost => return eval::loss_score(self.position.ply() as isize),
+            GameStatus::WeWon => return eval::win_score(self.position.ply() as isize),
+            GameStatus::OnGoing => {}
         }
         if depth == 0 {
             // Return a static evaluation of the position.
@@ -103,8 +106,8 @@ impl Solver {
         }
 
         // Set the best score to the minimal value at first.
-        // We can only be lost on our turn, so worst case we lose in 2 ply.
-        let mut best_score = eval::loss_score(self.position.ply() as isize + 2);
+        // We already checked that we aren't lost now, so worst case we lose next ply.
+        let mut best_score = eval::loss_score(self.position.ply() as isize + 1);
         if best_score >= beta {
             return best_score;
         }
