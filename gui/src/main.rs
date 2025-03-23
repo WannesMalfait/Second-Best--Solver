@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
-use engine::position::{self, GameStatus};
+use engine::position::{self, GameStatus, PlayerMove};
 
 fn main() {
     App::new()
@@ -211,6 +211,45 @@ fn launch_solver(solver_output: Res<SolverOutput>, mut commands: Commands) {
     });
 }
 
+fn board_preview(ui: &mut egui::Ui, pos: &position::Position) {
+    let (response, painter) = ui.allocate_painter(
+        egui::Vec2::splat(200.),
+        egui::Sense::focusable_noninteractive(),
+    );
+    let rect = response.rect;
+    let radius = rect.width().min(rect.height()) / 2.0;
+
+    painter.circle_filled(rect.center(), radius, egui::Color32::from_rgb(188, 138, 50));
+    // Calculate where all the spots are.
+    let spot_radius = radius / 10.0;
+    for stack_index in 0..8 {
+        let direction = egui::Vec2::angled(
+            // Each index increases the angle by 45°. We want to start at the top,
+            // so we subtract 90° from the angle.
+            stack_index as f32 * std::f32::consts::FRAC_PI_4 - std::f32::consts::FRAC_PI_2,
+        );
+        painter.text(
+            rect.center() + (direction * spot_radius * 3.0),
+            egui::Align2::CENTER_CENTER,
+            stack_index.to_string(),
+            egui::FontId::default(),
+            egui::Color32::BLACK,
+        );
+        for offset in 0..3 {
+            let spot_center =
+                rect.center() + (direction * (spot_radius * 1.1) * (2.0 + offset as f32) * 2.0);
+            let color = match pos.stone_at(stack_index, offset) {
+                None => SpotColor::EMPTY,
+                Some(color) => match color {
+                    position::Color::Black => SpotColor::BLACK,
+                    position::Color::White => SpotColor::WHITE,
+                },
+            };
+            painter.circle(spot_center, spot_radius, color, egui::Stroke::NONE);
+        }
+    }
+}
+
 fn draw_board(
     mut contexts: EguiContexts,
     mut ui_state: ResMut<UiState>,
@@ -241,7 +280,9 @@ fn draw_board(
                     ui.label("Black Move");
                     ui.label("White Move");
                     ui.end_row();
+                    let mut pos_copy = position::Position::default();
                     for (i, pmove) in ui_state.moves_played.iter().enumerate() {
+                        pos_copy.try_make_move(*pmove).unwrap();
                         if i % 2 == 0 {
                             // Every row, show the turn number.
                             ui.label(format!("{}.", i / 2 + 1));
@@ -254,6 +295,7 @@ fn draw_board(
                                     pmove.to_string(),
                                 ),
                             )
+                            .on_hover_ui(|ui| board_preview(ui, &pos_copy))
                             .clicked()
                         {
                             selected_move = Some(i);
@@ -306,7 +348,7 @@ fn draw_board(
                 response.on_hover_text("The depth to search to");
             });
             if ui
-                .button("eval")
+                .button("Eval")
                 .on_hover_text("Get the evaluation for the current position")
                 .clicked()
             {
@@ -354,11 +396,24 @@ fn draw_board(
                     ui.label(format!("{}.", offset / 2 + 1));
                     ui.label("...");
                 }
-                for (i, smove) in ui_state.pv.iter().enumerate() {
+                let mut pos_copy = ui_state.pos.clone();
+                for (i, smove) in ui_state.pv.clone().iter().enumerate() {
+                    pos_copy.parse_and_play_moves(vec![smove.clone()]).unwrap();
                     if (offset + i as isize + 1) % 2 == 0 {
                         ui.label(format!("{}.", (i as isize + offset + 1) / 2 + 1));
                     }
-                    ui.selectable_label(false, smove).clicked();
+                    if ui
+                        .selectable_label(false, smove)
+                        .on_hover_ui(|ui| {
+                            board_preview(ui, &pos_copy);
+                        })
+                        .clicked()
+                    {
+                        let smoves = ui_state.pv.clone();
+                        for smove in smoves[..=i].iter() {
+                            ui_state.make_move(PlayerMove::from(smove.to_string()).unwrap());
+                        }
+                    }
                 }
             });
             if let Some(stats) = &ui_state.search_stats {
@@ -373,6 +428,7 @@ fn draw_board(
         });
     });
     egui::CentralPanel::default().show(ctx, |ui| {
+        ui.set_min_size(egui::vec2(400., 400.));
         let (response, painter) =
             ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
         let rect = response.rect;
