@@ -6,6 +6,6 @@ authors = { workspace = true }
 description = "A gui to play and analyze the board game: Second Best!"
 
 [dependencies]
-bevy_egui  = "0.28"
-bevy = "0.14"
+bevy_egui  = "0.33"
+bevy = "0.15"
 engine = { path = "../engine" }

@@ -207,6 +207,7 @@ fn launch_solver(solver_output: Res<SolverOutput>, mut commands: Commands) {
         for line in reader.lines() {
             msgs.lock().unwrap().push(line.unwrap());
         }
+        child.wait()
     });
 }
 
@@ -300,7 +301,7 @@ fn draw_board(
                 let response = ui.add(
                     egui::DragValue::new(&mut ui_state.depth)
                         .range(1..=25)
-                        .clamp_to_range(true),
+                        .clamp_existing_to_range(true),
                 );
                 response.on_hover_text("The depth to search to");
             });
@@ -388,8 +389,8 @@ fn draw_board(
         );
 
         // Second Best! button.
-        let button =
-            egui::Button::new("Second Best!").rounding(egui::Rounding::default().at_least(10.0));
+        let button = egui::Button::new("Second Best!")
+            .corner_radius(egui::CornerRadius::default().at_least(10));
         if !ui_state.pos.can_second_best() {
             ui.disable();
         }
