@@ -1,21 +1,26 @@
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 use engine::position::{self, GameStatus, PlayerMove};
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugins(EguiPlugin)
+        .add_plugins(EguiPlugin::default())
         .init_resource::<UiState>()
         .init_resource::<SolverOutput>()
-        .add_event::<SolverInfo>()
+        .add_message::<SolverInfo>()
         .add_systems(Startup, launch_solver)
+        .add_systems(Startup, setup_camera_system)
         // Systems that create Egui widgets should be run during the `CoreSet::Update` set,
         // or after the `EguiSet::BeginFrame` system (which belongs to the `CoreSet::PreUpdate` set).
-        .add_systems(Update, draw_board)
+        .add_systems(EguiPrimaryContextPass, draw_board)
         .add_systems(Update, log_solver_output)
         .add_systems(Update, keyboard_input)
         .run();
+}
+
+fn setup_camera_system(mut commands: Commands) {
+    commands.spawn(Camera2d);
 }
 
 #[derive(Default, Resource)]
@@ -23,7 +28,7 @@ struct SolverOutput {
     msgs: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
 }
 
-#[derive(Event)]
+#[derive(Message)]
 enum SolverInfo {
     SearchStats(SearchStats),
     Pv { moves: Vec<String> },
@@ -36,7 +41,7 @@ struct SearchStats {
     knps: usize,
 }
 
-fn log_solver_output(reader: Res<SolverOutput>, mut writer: EventWriter<SolverInfo>) {
+fn log_solver_output(reader: Res<SolverOutput>, mut writer: MessageWriter<SolverInfo>) {
     let mut msgs = reader.msgs.lock().unwrap();
     for msg in msgs.iter() {
         println!("{}", msg);
@@ -55,11 +60,11 @@ fn log_solver_output(reader: Res<SolverOutput>, mut writer: EventWriter<SolverIn
             // Knps
             assert_eq!(stats.next(), Some("knps"));
             let knps = stats.next().unwrap().parse().unwrap();
-            writer.send(SolverInfo::SearchStats(SearchStats { depth, score, knps }));
+            writer.write(SolverInfo::SearchStats(SearchStats { depth, score, knps }));
         } else if msg.starts_with("pv") {
             let mut info = msg.split_whitespace();
             info.next();
-            writer.send(SolverInfo::Pv {
+            writer.write(SolverInfo::Pv {
                 moves: info.map(|s| s.to_string()).collect(),
             });
         }
@@ -254,8 +259,8 @@ fn draw_board(
     mut contexts: EguiContexts,
     mut ui_state: ResMut<UiState>,
     mut channel: ResMut<Channel>,
-    mut reader: EventReader<SolverInfo>,
-) {
+    mut reader: MessageReader<SolverInfo>,
+) -> Result {
     for info in reader.read() {
         match info {
             SolverInfo::SearchStats(stats) => {
@@ -266,7 +271,8 @@ fn draw_board(
             }
         }
     }
-    let ctx = contexts.ctx_mut();
+
+    let ctx = contexts.ctx_mut()?;
     egui::SidePanel::right("Move list").show(ctx, |ui| {
         ui.heading("Moves Panel");
         egui::ScrollArea::vertical()
@@ -290,7 +296,7 @@ fn draw_board(
                         if ui
                             .add_sized(
                                 ui.available_size(),
-                                egui::SelectableLabel::new(
+                                egui::Button::selectable(
                                     Some(i) == ui_state.curr_move,
                                     pmove.to_string(),
                                 ),
@@ -554,13 +560,13 @@ fn draw_board(
                             if response.drag_started() {
                                 ui_state.drag_start = Some((stack_index, offset));
                             }
-                            if response.drag_stopped() {
-                                if let Some((from_stack, _)) = ui_state.drag_start {
-                                    ui_state.make_move(position::PlayerMove::StoneMove {
-                                        from: Some(from_stack),
-                                        to: stack_index,
-                                    });
-                                }
+                            if response.drag_stopped()
+                                && let Some((from_stack, _)) = ui_state.drag_start
+                            {
+                                ui_state.make_move(position::PlayerMove::StoneMove {
+                                    from: Some(from_stack),
+                                    to: stack_index,
+                                });
                             }
                         }
                     }
@@ -592,6 +598,8 @@ fn draw_board(
             );
         }
     });
+
+    Ok(())
 }
 
 fn keyboard_input(mut ui_state: ResMut<UiState>, keyboard: Res<ButtonInput<KeyCode>>) {
