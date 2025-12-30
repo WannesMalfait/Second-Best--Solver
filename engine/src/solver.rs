@@ -1,13 +1,10 @@
 use crate::eval;
-use crate::eval::explain_eval;
 use crate::movegen;
 use crate::position::GameStatus;
 use crate::position::Position;
-use crate::transposition_table::EntryType;
-use crate::transposition_table::TranspositionTable;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time;
 
 pub struct Solver {
@@ -16,7 +13,6 @@ pub struct Solver {
     abort: Arc<AtomicBool>,
     /// If true, don't print anything to stdout.
     quiet: bool,
-    t_table: TranspositionTable,
 }
 
 impl Default for Solver {
@@ -26,7 +22,6 @@ impl Default for Solver {
             nodes: 0,
             abort: Arc::new(AtomicBool::new(false)),
             quiet: true,
-            t_table: TranspositionTable::default(),
         }
     }
 }
@@ -45,9 +40,9 @@ impl Solver {
 
     /// Do an alpha beta negamax search on the current position.
     /// Returns the score of the current position.
-    fn negamax(&mut self, depth: usize, mut alpha: isize, mut beta: isize) -> isize {
+    fn negamax(&mut self, depth: usize, mut alpha: isize, beta: isize) -> isize {
         // Don't check this every node, but often enough.
-        if self.nodes % 1024 == 0 && self.abort_search() {
+        if self.nodes.is_multiple_of(1024) && self.abort_search() {
             // Have to stop the search now.
             return 0;
         }
@@ -65,60 +60,15 @@ impl Solver {
             return eval;
         }
 
-        let initial_alpha = alpha;
-        let initial_beta = beta;
-
-        let mut best_move = None;
-        if let Some(tt_entry) = self.t_table.get(&self.position) {
-            best_move = Some(tt_entry.best_move(&self.position));
-            // If we find the entry in a direct way, the score can be used.
-            if tt_entry.ply() >= self.position.ply() {
-                let score = tt_entry.score(self.position.ply() as isize);
-                match tt_entry.entry_type() {
-                    EntryType::Undetermined => (),
-                    EntryType::Exact => {
-                        return score;
-                    }
-                    EntryType::UpperBound => {
-                        // if beta > score {
-                        //     beta = score;
-                        //     if score <= alpha {
-                        //         return score;
-                        //     }
-                        // }
-                    }
-                    EntryType::LowerBound => {
-                        // if alpha < score {
-                        //     alpha = score;
-                        //     if score >= beta {
-                        //         return score;
-                        //     }
-                        // }
-                    }
-                }
-            }
-        }
-
         // Set the best score to the minimal value at first.
         // We already checked that we aren't lost now, so worst case we lose next ply.
         let mut best_score = eval::loss_score(self.position.ply() as isize + 1);
         if best_score >= beta {
-            println!("beta cutoff {best_score} >= {beta} (initial = {initial_beta})");
-            println!(
-                "{}",
-                explain_eval(
-                    self.position.current_player(),
-                    best_score,
-                    self.position.ply() as isize,
-                )
-            );
-            self.position.show();
-            println!("ply {}", self.position.ply());
             return best_score;
         }
 
         // Look at the child nodes:
-        let moves = movegen::MoveGen::new(&self.position, best_move);
+        let moves = movegen::MoveGen::new(&self.position, None);
         for bmove in moves {
             if cfg!(debug_assertions) {
                 // Validate moves in debug builds.
@@ -138,7 +88,6 @@ impl Solver {
 
             self.position.unmake_move();
             if eval > best_score {
-                best_move = Some(bmove);
                 best_score = eval;
                 if best_score > alpha {
                     alpha = best_score;
@@ -147,18 +96,6 @@ impl Solver {
                     }
                 }
             }
-        }
-        if let Some(best_move) = best_move {
-            let entry_type = match eval::decode_eval(best_score, self.position.ply() as isize) {
-                eval::ExplainableEval::Undetermined(_) => EntryType::Undetermined,
-                eval::ExplainableEval::Win(_) | eval::ExplainableEval::Loss(_) => match () {
-                    _ if best_score >= initial_beta => EntryType::LowerBound,
-                    _ if best_score <= initial_alpha => EntryType::UpperBound,
-                    _ => EntryType::Exact,
-                },
-            };
-            self.t_table
-                .store(&self.position, best_score, best_move, entry_type);
         }
         best_score
     }
@@ -199,21 +136,6 @@ impl Solver {
                     elapsed
                 );
                 print!("pv");
-                let mut keys = vec![];
-                while let Some(tt_entry) = self.t_table.get(&self.position) {
-                    let key = TranspositionTable::key(&self.position);
-                    if keys.contains(&key) {
-                        // Prevent from being stuck in a loop.
-                        break;
-                    }
-                    keys.push(key);
-                    print!(" {}", tt_entry.best_move_for_printing());
-                    self.position.make_move(tt_entry.best_move(&self.position));
-                }
-                // Set position back to original state.
-                for _ in 0..keys.len() {
-                    self.position.unmake_move();
-                }
                 println!();
             }
             match eval::decode_eval(eval, self.position.ply() as isize) {

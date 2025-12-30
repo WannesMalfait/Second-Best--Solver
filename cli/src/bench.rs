@@ -9,8 +9,8 @@ use engine::solver;
 use std::io::{self, Write};
 use std::ops::Range;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::vec;
 
 pub const BENCHMARKS_PATH: &str = "./benchmarks/";
@@ -18,7 +18,7 @@ pub const BENCHMARKS_PATH: &str = "./benchmarks/";
 /// Generate a benchmark file with the given specifications
 /// 1. `num_positions` is the number of positions in the benchmark
 /// 2. `moves` is the bounds on the number of moves that need to played
-///     for the position to be in the benchmark.
+///    for the position to be in the benchmark.
 /// 3. `depth` gives a lower and upper bound on the depth needed to solve
 ///    the position.
 ///
