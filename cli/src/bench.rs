@@ -94,7 +94,7 @@ fn generate_random_position(
             eval::ExplainableEval::Win(moves) | eval::ExplainableEval::Loss(moves) => {
                 if moves >= depth_range.start as isize {
                     // Position is solvable in given depth.
-                    return Some(solver.position.clone().serialize());
+                    return Some(format!("{moves};") + &solver.position.clone().serialize());
                 } else {
                     // Position is too easily solvable.
                     return None;
@@ -195,19 +195,26 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
                                 io::stdout().flush().unwrap();
                             }
                             solver.position = Position::default();
-                            let moves =
-                                position.split_whitespace().map(|s| s.to_string()).collect();
+                            let (num_moves_sol, moves) = position.split_once(';').unwrap();
+                            let num_moves_sol: isize = num_moves_sol.parse().unwrap();
+                            let moves = moves.split_whitespace().map(|s| s.to_string()).collect();
                             solver.position.parse_and_play_moves(moves).unwrap();
                             let now = std::time::Instant::now();
                             // Add extra depth, in case the solver needs it.
                             let eval = solver.search(max_depth);
                             // Sanity check to make sure we actually solved the position.
-                            if matches!(
-                                eval::decode_eval(eval, solver.position.ply() as isize),
-                                ExplainableEval::Undetermined(_)
-                            ) {
-                                println!("\n Failed position {}", position);
-                                break;
+                            match eval::decode_eval(eval, solver.position.ply() as isize) {
+                                ExplainableEval::Win(num_moves)
+                                | ExplainableEval::Loss(num_moves) => {
+                                    if num_moves != num_moves_sol {
+                                        println!("\n Failed position {}\n Expected to solve in {num_moves_sol} but solved in {num_moves}", position);
+                                        break;
+                                    }
+                                }
+                                ExplainableEval::Undetermined(_) => {
+                                    println!("\n Failed to solve position {}", position);
+                                    break;
+                                }
                             }
                             if solver.abort_search() {
                                 break;
