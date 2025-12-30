@@ -46,18 +46,6 @@ pub type Bitboard = u64;
 
 #[derive(Clone)]
 pub struct Position {
-    // /// State of the board, with `NUM_STACKS` stacks of stones of height `STACK_HEIGHT`.
-    // board: [[Stone; Self::STACK_HEIGHT as usize]; Self::NUM_STACKS as usize],
-    // /// Number of stone moves played since the beginning of the game.
-    // moves: u8,
-    // /// The player whose turn it is.
-    // current_player: Color,
-    // /// Moves played throughout the game.
-    // move_history: [Option<Move>; Self::MAX_MOVES as usize],
-    // /// Moves which were prohibited, since "Second Best!" was called on it.
-    // banned_moves: [Option<Move>; Self::MAX_MOVES as usize],
-    // /// The heights of the different stacks. Stored for more efficient lookups.
-    // stack_heights: [u8; Self::NUM_STACKS as usize],
     /// Bitboard containing all the played spots by either player.
     played_spots: Bitboard,
     /// Bitboard containing all the played spots by the current player.
@@ -172,6 +160,8 @@ pub enum GameStatus {
     WeWon,
     /// Current player has lost.
     WeLost,
+    /// The game is a draw (3-fold repetion or 50-move rule)
+    Draw,
     /// The game is not yet over.
     OnGoing,
 }
@@ -731,9 +721,55 @@ impl Position {
         false
     }
 
+    /// Checks if this is the third time this position has been reached. Both
+    /// the position of the stones and the possibility of second best need to be
+    /// exactly the same.
+    ///
+    /// NOTE: Assumes that this is called after every move, otherwise it might not be correct.
+    fn is_threefold(&self) -> bool {
+        if self.num_turns() < Self::STONES_PER_PLAYER * 2 + 3 {
+            // In the first phase stones get added so a 3-fold repetition is impossible.
+            // We need at least 3 turns in the second phase to have a 3-fold repetition.
+            // Probably even more, but let's be safe.
+            return false;
+        }
+        if !self.can_second_best() {
+            // By our assumptions we would have had a 3-fold on the previous move.
+            return false;
+        }
+        let mut repetitions = 1;
+        let mut played_spots = self.played_spots;
+        let mut our_spots = self.our_spots;
+        for smove in self.move_history[Self::STONES_PER_PLAYER * 2 + 1..self.num_turns + 1]
+            .iter()
+            .rev()
+        {
+            let smove = smove.unwrap();
+            our_spots ^= played_spots;
+            played_spots ^= smove;
+
+            if played_spots == self.played_spots && our_spots == self.our_spots {
+                repetitions += 1;
+                if repetitions == 3 {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Returns if each player has had 50 turns in the second phase.
+    fn fifty_move(&self) -> bool {
+        self.num_turns >= 2 * (50 + Self::STONES_PER_PLAYER)
+    }
+
     /// Returns the status of the game from the perspective
     /// of the current player.
     pub fn game_status(&self) -> GameStatus {
+        if self.fifty_move() || self.is_threefold() {
+            return GameStatus::Draw;
+        }
         let we_have_alignment = self.has_alignment(Self::US);
         let they_have_alignment = self.has_alignment(Self::THEM);
         if we_have_alignment {
@@ -927,6 +963,10 @@ impl Position {
             }
             GameStatus::WeWon => {
                 println!("Game over, ({}) has won!", self.current_player());
+                return;
+            }
+            GameStatus::Draw => {
+                println!("Game over, it's a draw.");
                 return;
             }
             GameStatus::OnGoing => {}
@@ -1248,8 +1288,7 @@ mod tests {
         assert_eq!(pos.move_history, pos2.move_history);
 
         let mut pos = Position::default();
-        let input_moves =
-            "3 1 1 0 6 2 3 7 6 6 7 0 5 7 0 2 5-4 7-3 0-1 3-4 3-4 0-7 4-0 4-3 4-5 7-0 7-3 6-7 ! 6-5 6-7";
+        let input_moves = "3 1 1 0 6 2 3 7 6 6 7 0 5 7 0 2 5-4 7-3 0-1 3-4 3-4 0-7 4-0 4-3 4-5 7-0 7-3 6-7 ! 6-5 6-7";
         pos.parse_and_play_moves(
             input_moves
                 .split_whitespace()
@@ -1260,5 +1299,18 @@ mod tests {
         let moves = pos.clone().serialize();
         println!("{moves}");
         assert_eq!(moves, input_moves);
+    }
+
+    #[test]
+    fn three_fold() {
+        let mut pos = Position::default();
+        pos.parse_and_play_moves(
+            "1 2 3 1 2 3 1 2 3 5 6 5 4 7 4 4 1-0 7-6 0-1 6-7 1-0 7-6 0-1 6-7"
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect(),
+        )
+        .unwrap();
+        assert_eq!(pos.game_status(), GameStatus::Draw);
     }
 }

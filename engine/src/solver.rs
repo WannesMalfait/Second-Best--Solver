@@ -56,6 +56,7 @@ impl Solver {
         match self.position.game_status() {
             GameStatus::WeLost => return eval::loss_score(self.position.ply() as isize),
             GameStatus::WeWon => return eval::win_score(self.position.ply() as isize),
+            GameStatus::Draw => return 0,
             GameStatus::OnGoing => {}
         }
         if depth == 0 {
