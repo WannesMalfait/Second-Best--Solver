@@ -1,25 +1,95 @@
+use std::{num::ParseIntError, ops::Neg, str::FromStr};
+
 use crate::position::{Color, Position};
 
-pub const WIN: isize = 1000;
-pub const IS_WIN: isize = WIN - 2 * Position::MAX_MOVES as isize;
-pub const LOSS: isize = -WIN;
-pub const IS_LOSS: isize = -IS_WIN;
+type ScoreType = i16;
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Score(ScoreType);
+
+impl Score {
+    pub const WIN: Score = Score(1000);
+    pub const LOSS: Score = Score(-Self::WIN.0);
+    const IS_WIN: Score = Score(Self::WIN.0 - 2 * Position::MAX_MOVES as ScoreType);
+    const IS_LOSS: Score = Score(-Self::IS_WIN.0);
+
+    pub fn is_win(self) -> bool {
+        self >= Self::IS_WIN
+    }
+    pub fn is_loss(self) -> bool {
+        self <= Self::IS_LOSS
+    }
+    /// Either a win or a loss
+    pub fn is_mate(self) -> bool {
+        self.is_win() || self.is_loss()
+    }
+
+    /// Score for a loss in `ply` moves
+    pub fn loss_in(ply: usize) -> Self {
+        Score(Self::LOSS.0 + ply as ScoreType)
+    }
+
+    /// Score for a win in `ply` moves
+    pub fn win_in(ply: usize) -> Self {
+        Score(Self::WIN.0 - ply as ScoreType)
+    }
+
+    pub fn draw() -> Score {
+        Score(0)
+    }
+
+    pub fn increase_ply(self) -> Self {
+        if self.is_loss() {
+            Score(self.0 + 1)
+        } else if self.is_win() {
+            Score(self.0 - 1)
+        } else {
+            self
+        }
+    }
+
+    /// Turn the evaluation into a more digestible enum.
+    pub fn decode_eval(self) -> ExplainableEval {
+        if self.is_loss() {
+            ExplainableEval::Loss((self.0 - Self::LOSS.0) as usize)
+        } else if self.is_win() {
+            ExplainableEval::Win((Self::WIN.0 - self.0) as usize)
+        } else {
+            ExplainableEval::Undetermined(self.0)
+        }
+    }
+}
+
+impl Neg for Score {
+    type Output = Score;
+
+    fn neg(self) -> Self::Output {
+        Score(-self.0)
+    }
+}
+
+impl FromStr for Score {
+    type Err = ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Score(s.parse()?))
+    }
+}
 
 pub enum ExplainableEval {
     /// A win, with how many moves needed to get there.
-    Win(isize),
+    Win(usize),
     /// A loss, with how many moves needed to get there.
-    Loss(isize),
+    Loss(usize),
     /// Position is not yet solved, best score at the searched depth.
-    Undetermined(isize),
+    Undetermined(ScoreType),
 }
 
 /// Return a static evaluation of the position.
-pub fn static_eval(pos: &Position) -> isize {
+pub fn static_eval(pos: &Position) -> Score {
     // For now just count how many stacks are controlled by each player.
     let mut score = 0;
-    score += pos.controlled_stacks(true).count_ones() as isize;
-    score -= pos.controlled_stacks(false).count_ones() as isize;
+    score += pos.controlled_stacks(true).count_ones() as ScoreType;
+    score -= pos.controlled_stacks(false).count_ones() as ScoreType;
     // Since the bitboards store two copies of the board,
     // we need to divide by 2.
     score /= 2;
@@ -27,35 +97,12 @@ pub fn static_eval(pos: &Position) -> isize {
         // We don't check for us having an alignment, because that would already be a win.
         score -= 10;
     }
-    score
-}
-
-/// The evaluation of a loss at the given ply.
-#[inline]
-pub fn loss_score(ply: isize) -> isize {
-    LOSS + ply
-}
-
-/// The evaluation of a win at the given ply.
-#[inline]
-pub fn win_score(ply: isize) -> isize {
-    WIN - ply
-}
-
-/// Turn the evaluation into a more digestible enum.
-pub fn decode_eval(eval: isize, ply: isize) -> ExplainableEval {
-    if eval < IS_LOSS {
-        ExplainableEval::Loss(eval - LOSS - ply)
-    } else if eval > IS_WIN {
-        ExplainableEval::Win(WIN - eval - ply)
-    } else {
-        ExplainableEval::Undetermined(eval)
-    }
+    Score(score)
 }
 
 /// Explain an evaluation in a human readable way.
-pub fn explain_eval(side: Color, eval: isize, ply: isize) -> String {
-    match decode_eval(eval, ply) {
+pub fn explain_eval(side: Color, eval: Score) -> String {
+    match eval.decode_eval() {
         ExplainableEval::Win(moves) => format!(
             "Position is winning:\n{} can win in {} move(s)",
             side, moves

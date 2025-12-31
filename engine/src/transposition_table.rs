@@ -1,5 +1,5 @@
 use crate::{
-    eval::{self},
+    eval::Score,
     position::{BitboardMove, PlayerMove, Position},
 };
 
@@ -85,7 +85,7 @@ pub enum EntryType {
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Entry {
     /// The value of the node when this entry was stored.
-    score: i16,
+    score: Score,
     /// The move with the highest score at node.
     best_move: TTMove,
     entry_type: EntryType,
@@ -96,20 +96,11 @@ pub struct Entry {
 impl Entry {
     fn new(
         pos: &Position,
-        score: i16,
+        score: Score,
         best_move: BitboardMove,
         entry_type: EntryType,
         depth: u8,
-        ply: u8,
     ) -> Self {
-        // If there is a mate store how many ply away it is.
-        let score = if score as isize >= eval::IS_WIN {
-            score + ply as i16
-        } else if score as isize <= eval::IS_LOSS {
-            score - ply as i16
-        } else {
-            score
-        };
         Self {
             score,
             best_move: TTMove::from_bitboard_move(pos, best_move),
@@ -118,15 +109,8 @@ impl Entry {
         }
     }
 
-    /// The score for mate evals depends on the ply.
-    pub fn score(&self, ply: isize) -> isize {
-        if self.score as isize >= eval::IS_WIN {
-            self.score as isize - ply
-        } else if self.score as isize <= eval::IS_LOSS {
-            self.score as isize + ply
-        } else {
-            self.score as isize
-        }
+    pub fn score(&self) -> Score {
+        self.score
     }
 
     pub fn best_move(&self, pos: &Position) -> BitboardMove {
@@ -250,23 +234,15 @@ impl TranspositionTable {
     pub fn store(
         &mut self,
         pos: &Position,
-        score: isize,
+        score: Score,
         best_move: BitboardMove,
         entry_type: EntryType,
         depth: usize,
-        ply: usize,
     ) {
         let key = Self::key(pos);
         let index = self.index(key);
         // For now always overwrite.
-        let entry = Entry::new(
-            pos,
-            score as i16,
-            best_move,
-            entry_type,
-            depth as u8,
-            ply as u8,
-        );
+        let entry = Entry::new(pos, score, best_move, entry_type, depth as u8);
         self.entries[index] = entry;
         self.keys[index] = key;
     }
@@ -329,7 +305,7 @@ mod tests {
         for to in 0..8 {
             let bmove = BitboardMove::StoneMove(pos.stone_move(None, to));
 
-            tt.store(&pos, 0, bmove, EntryType::Exact, 0, 0);
+            tt.store(&pos, Score::default(), bmove, EntryType::Exact, 0);
             assert_eq!(tt.get(&pos).unwrap().best_move(&pos), bmove);
             pos.make_move(bmove);
         }
@@ -343,7 +319,7 @@ mod tests {
             pos.make_move(bmove);
             pos.second_best();
             let bmove = BitboardMove::StoneMove(pos.stone_move(None, (1 + to) % 8));
-            tt.store(&pos, 0, bmove, EntryType::Exact, 0, 0);
+            tt.store(&pos, Score::default(), bmove, EntryType::Exact, 0);
             assert_eq!(tt.get(&pos).unwrap().best_move(&pos), bmove);
             pos.make_move(bmove);
         }
@@ -369,7 +345,13 @@ mod tests {
         pos.make_phase_one_move(2);
         pos.make_phase_one_move(2);
         pos.show();
-        tt.store(&pos, 0, BitboardMove::SecondBest, EntryType::Exact, 0, 0);
+        tt.store(
+            &pos,
+            Score::default(),
+            BitboardMove::SecondBest,
+            EntryType::Exact,
+            0,
+        );
         pos.unmake_move();
         pos.unmake_move();
         pos.unmake_move();

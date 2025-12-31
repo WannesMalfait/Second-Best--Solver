@@ -1,6 +1,9 @@
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
-use engine::position::{self, GameStatus, PlayerMove};
+use engine::{
+    eval::Score,
+    position::{self, GameStatus, PlayerMove},
+};
 
 fn main() {
     App::new()
@@ -37,7 +40,7 @@ enum SolverInfo {
 #[derive(Clone)]
 struct SearchStats {
     depth: usize,
-    score: isize,
+    score: Score,
     knps: usize,
 }
 
@@ -428,7 +431,6 @@ fn draw_board(
                 ui.label(engine::eval::explain_eval(
                     ui_state.pos.current_player(),
                     stats.score,
-                    ui_state.pos.ply() as isize,
                 ));
             }
         });

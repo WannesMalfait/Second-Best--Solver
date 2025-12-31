@@ -1,4 +1,5 @@
 use crate::eval;
+use crate::eval::Score;
 use crate::movegen;
 use crate::position::GameStatus;
 use crate::position::Position;
@@ -44,18 +45,18 @@ impl Solver {
 
     /// Do an alpha beta negamax search on the current position.
     /// Returns the score of the current position.
-    fn negamax(&mut self, depth: usize, mut alpha: isize, beta: isize) -> isize {
+    fn negamax(&mut self, depth: usize, mut alpha: Score, beta: Score) -> Score {
         // Don't check this every node, but often enough.
         if self.nodes.is_multiple_of(1024) && self.abort_search() {
             // Have to stop the search now.
-            return 0;
+            return Score::draw();
         }
 
         self.nodes += 1;
         match self.position.game_status() {
-            GameStatus::WeLost => return eval::loss_score(self.position.ply() as isize),
-            GameStatus::WeWon => return eval::win_score(self.position.ply() as isize),
-            GameStatus::Draw => return 0,
+            GameStatus::WeLost => return Score::loss_in(0),
+            GameStatus::WeWon => return Score::win_in(0),
+            GameStatus::Draw => return Score::draw(),
             GameStatus::OnGoing => {}
         }
         if depth == 0 {
@@ -66,7 +67,7 @@ impl Solver {
 
         // Set the best score to the minimal value at first.
         // We already checked that we aren't lost now, so worst case we lose next ply.
-        let mut best_score = eval::loss_score(self.position.ply() as isize + 1);
+        let mut best_score = Score::loss_in(1);
         if best_score >= beta {
             return best_score;
         }
@@ -76,8 +77,8 @@ impl Solver {
         if let Some(entry) = self.ttable.get(&self.position) {
             // If we are searching deeper then we can't trust the transposition table.
             if entry.depth() >= depth {
-                let score = entry.score(self.position.ply() as isize);
-                if score < eval::IS_WIN && score > eval::IS_LOSS {
+                let score = entry.score();
+                if !score.is_mate() {
                     // Don't look at mate evals for now.
                     // TODO: figure out what's wrong with mate evals.
                     match entry.entry_type() {
@@ -115,13 +116,12 @@ impl Solver {
             } else {
                 self.position.make_move(bmove);
             }
-            let next_depth = if matches!(bmove, crate::position::BitboardMove::SecondBest) {
-                //  Search lines where we "Second Best!" a little longer.
-                depth
-            } else {
-                depth - 1
-            };
-            let eval = -self.negamax(next_depth, -beta, -alpha);
+            // TODO: experiment with selectively increasing search.
+            // Doing so can cause the solver to find slower mates, so it should be carefully implemented.
+            let next_depth = depth - 1;
+
+            // Ensure that the ply is kept track of correctly for mate evals.
+            let eval = -self.negamax(next_depth, -beta, -alpha).increase_ply();
 
             self.position.unmake_move();
             if eval > best_score {
@@ -151,7 +151,6 @@ impl Solver {
                 EntryType::Exact
             },
             depth,
-            self.position.ply(),
         );
 
         best_score
@@ -174,12 +173,12 @@ impl Solver {
         self.nodes = 0;
     }
 
-    pub fn search(&mut self, depth: usize) -> isize {
+    pub fn search(&mut self, depth: usize) -> Score {
         self.initialize_for_search();
-        let mut eval = 0;
+        let mut eval = Score::default();
         let start = time::Instant::now();
         for depth in 1..=depth {
-            let new_eval = self.negamax(depth, eval::LOSS, eval::WIN);
+            let new_eval = self.negamax(depth, Score::LOSS, Score::WIN);
             if self.abort_search() {
                 return eval;
             }
@@ -189,7 +188,7 @@ impl Solver {
                 let nodes = self.nodes;
                 let knps = self.nodes as u128 / (1 + elapsed.as_millis());
                 println!(
-                    "info depth {depth} score {eval} nodes {nodes} knps {knps} ({:?} total time)",
+                    "info depth {depth} score {eval:?} nodes {nodes} knps {knps} ({:?} total time)",
                     elapsed
                 );
                 print!("pv");
@@ -206,11 +205,8 @@ impl Solver {
                 }
                 println!();
             }
-            match eval::decode_eval(eval, self.position.ply() as isize) {
-                eval::ExplainableEval::Win(_) | eval::ExplainableEval::Loss(_) => {
-                    break;
-                }
-                _ => continue,
+            if eval.is_mate() {
+                break;
             }
         }
         eval

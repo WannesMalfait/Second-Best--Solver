@@ -133,7 +133,7 @@ fn generate_random_position(
         }
     } else {
         let eval = solver.search(depth_range.end / 2 + depth_range.start / 2);
-        let eval = eval::decode_eval(eval, solver.position.ply() as isize);
+        let eval = eval.decode_eval();
         match eval {
             eval::ExplainableEval::Undetermined(_) => (),
             eval::ExplainableEval::Win(moves) | eval::ExplainableEval::Loss(moves) => {
@@ -241,14 +241,14 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
                             }
                             solver.position = Position::default();
                             let (num_moves_sol, moves) = position.split_once(';').unwrap();
-                            let num_moves_sol: isize = num_moves_sol.parse().unwrap();
+                            let num_moves_sol = num_moves_sol.parse().unwrap();
                             let moves = moves.split_whitespace().map(|s| s.to_string()).collect();
                             solver.position.parse_and_play_moves(moves).unwrap();
                             let now = std::time::Instant::now();
                             // Add extra depth, in case the solver needs it.
                             let eval = solver.search(max_depth);
                             // Sanity check to make sure we actually solved the position.
-                            match eval::decode_eval(eval, solver.position.ply() as isize) {
+                            match eval.decode_eval() {
                                 ExplainableEval::Win(num_moves)
                                 | ExplainableEval::Loss(num_moves) => {
                                     if num_moves != num_moves_sol {
