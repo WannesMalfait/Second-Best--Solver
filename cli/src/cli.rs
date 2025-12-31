@@ -1,10 +1,10 @@
 use crate::bench;
 use clap::{Args, Parser, Subcommand};
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Sender};
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::vec::Vec;
 
 use engine::eval;
@@ -51,14 +51,16 @@ enum Command {
 struct GenBenchArgs {
     /// The number of positions to generate.
     num_positions: usize,
+    /// The number of threads to generate the benchmarks with.
+    num_threads: usize,
     /// The minimal number of moves in each position.
     min_moves: usize,
     /// The maximal number of moves in each position.
     max_moves: usize,
-    /// The minimal amount of depth needed to solve each position.
-    min_depth: usize,
-    /// The maximal amount of depth needed to solve each position.
-    max_depth: usize,
+    /// The minimal amount of moves needed to solve each position.
+    min_sol_depth: usize,
+    /// The maximal amount of moves needed to solve each position.
+    max_sol_depth: usize,
 }
 
 #[derive(Parser, Debug)]
@@ -113,45 +115,49 @@ impl Cli {
         std::thread::Builder::new()
             .name("Receiver".to_string())
             .stack_size(5_000_000)
-            .spawn(move || loop {
-                if let Ok(request) = rx.recv() {
-                    match request {
-                        ThreadRequest::Quit => return,
-                        ThreadRequest::Search(req) => {
-                            let mut solver = req.solver.lock().unwrap();
-                            solver.be_noisy();
-                            let eval = solver.search(req.depth);
-                            solver.be_quiet();
-                            println!(
-                                "{}",
-                                eval::explain_eval(
-                                    solver.position.current_player(),
-                                    eval,
-                                    solver.position.ply() as isize
-                                )
-                            );
-                        }
-                        ThreadRequest::GenBench(GenBenchRequest {
-                            abort,
-                            bench_args:
-                                GenBenchArgs {
-                                    num_positions,
-                                    min_moves,
-                                    max_moves,
-                                    min_depth,
-                                    max_depth,
-                                },
-                        }) => {
-                            bench::generate_benchmark_file(
+            .spawn(move || {
+                loop {
+                    if let Ok(request) = rx.recv() {
+                        match request {
+                            ThreadRequest::Quit => return,
+                            ThreadRequest::Search(req) => {
+                                let mut solver = req.solver.lock().unwrap();
+                                solver.be_noisy();
+                                let eval = solver.search(req.depth);
+                                solver.be_quiet();
+                                println!(
+                                    "{}",
+                                    eval::explain_eval(
+                                        solver.position.current_player(),
+                                        eval,
+                                        solver.position.ply() as isize
+                                    )
+                                );
+                            }
+                            ThreadRequest::GenBench(GenBenchRequest {
                                 abort,
-                                num_positions,
-                                min_moves..max_moves,
-                                min_depth..max_depth,
-                            )
-                            .unwrap();
-                        }
-                        ThreadRequest::RunBench(RunBenchRequest { abort, num_threads }) => {
-                            bench::run_benchmarks(abort, num_threads).unwrap();
+                                bench_args:
+                                    GenBenchArgs {
+                                        num_positions,
+                                        num_threads,
+                                        min_moves,
+                                        max_moves,
+                                        min_sol_depth,
+                                        max_sol_depth,
+                                    },
+                            }) => {
+                                bench::generate_benchmark_file(
+                                    abort,
+                                    num_positions,
+                                    num_threads,
+                                    min_moves..max_moves,
+                                    min_sol_depth..max_sol_depth,
+                                )
+                                .unwrap();
+                            }
+                            ThreadRequest::RunBench(RunBenchRequest { abort, num_threads }) => {
+                                bench::run_benchmarks(abort, num_threads).unwrap();
+                            }
                         }
                     }
                 }

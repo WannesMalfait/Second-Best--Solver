@@ -10,42 +10,87 @@ use std::io::{self, Write};
 use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
-use std::vec;
+use std::sync::atomic::AtomicUsize;
+use std::vec::Vec;
 
 pub const BENCHMARKS_PATH: &str = "./benchmarks/";
 
 /// Generate a benchmark file with the given specifications
 /// 1. `num_positions` is the number of positions in the benchmark
-/// 2. `moves` is the bounds on the number of moves that need to played
+/// 2. `num_threads` each thread runs a separate solver generating positions
+/// 3. `moves` is the bounds on the number of moves that need to played
 ///    for the position to be in the benchmark.
-/// 3. `depth` gives a lower and upper bound on the depth needed to solve
+/// 4. `depth` gives a lower and upper bound on the depth needed to solve
 ///    the position.
 ///
 /// The benchmark consists of lines with moves to be played.
 pub fn generate_benchmark_file(
     abort: Arc<AtomicBool>,
     num_positions: usize,
+    num_threads: usize,
     moves_range: Range<usize>,
     depth_range: Range<usize>,
 ) -> io::Result<()> {
-    let mut positions = vec::Vec::with_capacity(num_positions);
-    let mut counter = 0;
-    while positions.len() < num_positions {
-        counter += 1;
-        print!("\rGenerating position {}", positions.len() + 1);
-        io::stdout().flush().unwrap();
-        let mut solver = solver::Solver::new(abort.clone());
-        let moves = generate_random_position(&mut solver, &moves_range, &depth_range, counter);
-        if abort.load(std::sync::atomic::Ordering::Relaxed) {
-            println!("\nStopping benchmark generation.");
-            break;
-        }
-        let moves = moves.unwrap();
-        if !positions.contains(&moves) {
-            positions.push(moves);
-        }
+    let counter = Arc::new(AtomicUsize::new(1));
+    let generated_positions = Arc::new(Mutex::new(Vec::with_capacity(num_positions)));
+    let num_generated_positions = Arc::new(AtomicUsize::new(0));
+    let mut thread_handlers = vec![];
+    for thread_id in 0..num_threads {
+        let abort = abort.clone();
+        let counter = counter.clone();
+        let num_generated_positions = num_generated_positions.clone();
+        let generated_positions = generated_positions.clone();
+        let moves_range = moves_range.clone();
+        let depth_range = depth_range.clone();
+        let main_thread = thread_id == 0;
+
+        thread_handlers.push(
+            std::thread::Builder::new()
+                .name(thread_id.to_string())
+                .stack_size(5_000_000)
+                .spawn(move || {
+                    while num_generated_positions.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                        < num_positions
+                    {
+                        let seed = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        if main_thread {
+                            // Some thread is generating this position right now.
+                            print!(
+                                "\rGenerating position {}",
+                                num_generated_positions.load(std::sync::atomic::Ordering::Relaxed)
+                            );
+                            io::stdout().flush().unwrap();
+                        }
+                        let mut solver = solver::Solver::new(abort.clone());
+                        let moves =
+                            generate_random_position(&mut solver, &moves_range, &depth_range, seed);
+                        if abort.load(std::sync::atomic::Ordering::Relaxed) {
+                            if main_thread {
+                                println!("\nStopping benchmark generation.");
+                            }
+                            break;
+                        }
+                        let moves = moves.unwrap();
+                        let mut generated_positions = generated_positions.lock().unwrap();
+                        if !generated_positions.contains(&moves) {
+                            generated_positions.push(moves);
+                        } else {
+                            num_generated_positions
+                                .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                        }
+                    }
+                }),
+        );
     }
+
+    for handler in thread_handlers {
+        handler?.join().unwrap();
+    }
+    let mut positions = generated_positions.lock().unwrap();
+    // Ensure that the output is stable.
+    positions.sort();
     println!();
     if positions.is_empty() {
         // Don't create the file if nothing was generated.
@@ -87,12 +132,12 @@ fn generate_random_position(
             return None;
         }
     } else {
-        let eval = solver.search(depth_range.end);
+        let eval = solver.search(depth_range.end / 2 + depth_range.start / 2);
         let eval = eval::decode_eval(eval, solver.position.ply() as isize);
         match eval {
             eval::ExplainableEval::Undetermined(_) => (),
             eval::ExplainableEval::Win(moves) | eval::ExplainableEval::Loss(moves) => {
-                if moves >= depth_range.start as isize {
+                if depth_range.start <= moves as usize && depth_range.end >= moves as usize {
                     // Position is solvable in given depth.
                     return Some(format!("{moves};") + &solver.position.clone().serialize());
                 } else {
@@ -103,7 +148,7 @@ fn generate_random_position(
         }
     }
     // Generate a new move 'randomly'.
-    let mut moves = movegen::MoveGen::new(&solver.position, None).collect::<vec::Vec<_>>();
+    let mut moves = movegen::MoveGen::new(&solver.position, None).collect::<Vec<_>>();
     let mut move_i;
 
     loop {
@@ -152,7 +197,7 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
             continue;
         }
         let file_name = file_name.strip_prefix("bench_").unwrap();
-        let params: vec::Vec<usize> = file_name
+        let params: Vec<usize> = file_name
             .split('_')
             .flat_map(|s| s.split('-').map(|n| n.parse::<usize>().unwrap()))
             .collect();
@@ -162,7 +207,7 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
         let min_depth = params[2];
         let max_depth = params[3];
         let file = std::fs::read_to_string(file.path())?;
-        let positions: vec::Vec<_> = file.lines().collect();
+        let positions: Vec<_> = file.lines().collect();
         println!(
             "\nStarting benchmark with {} positions.\n\
             number of moves: {min_moves}..{max_moves}\n\
