@@ -252,12 +252,12 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
                                 ExplainableEval::Win(num_moves)
                                 | ExplainableEval::Loss(num_moves) => {
                                     if num_moves != num_moves_sol {
-                                        println!("\n Failed position {}\n Expected to solve in {num_moves_sol} but solved in {num_moves}", position);
+                                        println!("\nFailed position {}\nExpected to solve in {num_moves_sol} but solved in {num_moves}", position);
                                         break;
                                     }
                                 }
                                 ExplainableEval::Undetermined(_) => {
-                                    println!("\n Failed to solve position {}", position);
+                                    println!("\nFailed to solve position {}", position);
                                     break;
                                 }
                             }

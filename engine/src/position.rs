@@ -802,17 +802,29 @@ impl Position {
 
         let left = Self::column_bottom_mask(Self::LEFT);
         let right = Self::column_bottom_mask(Self::RIGHT);
-        let opposite = Self::column_mask(Self::OPPOSITE);
+        let opposite = Self::column_bottom_mask(Self::OPPOSITE);
         let mut possible_to = left | right | opposite;
         for from in 0..Self::NUM_STACKS {
             let from_mask = Self::column_bottom_mask(from);
             if (from_mask & our_columns) == 0 {
                 // This from spot is not controlled by us.
+                // Move to the next column.
+                possible_to <<= Self::STACK_HEIGHT + 1;
                 continue;
             }
             if (possible_to & free_columns) != 0 {
-                // Found a possible move.
-                return GameStatus::OnGoing;
+                // Found a possible move. Just need to check if it isn't banned.
+                if let Some(banned_move) = self.banned_move() {
+                    let from_spot = Self::column_mask(from) & self.top_spots();
+                    let to_spots =
+                        ((possible_to & free_columns) + self.played_spots) & !self.played_spots;
+                    if (from_spot | to_spots) & !banned_move != 0 {
+                        // We have a move different from the banned move.
+                        return GameStatus::OnGoing;
+                    }
+                } else {
+                    return GameStatus::OnGoing;
+                }
             }
             // Move to the next column.
             possible_to <<= Self::STACK_HEIGHT + 1;
