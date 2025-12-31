@@ -721,11 +721,9 @@ impl Position {
         false
     }
 
-    /// Checks if this is the third time this position has been reached. Both
-    /// the position of the stones and the possibility of second best need to be
-    /// exactly the same.
-    ///
-    /// NOTE: Assumes that this is called after every move, otherwise it might not be correct.
+    /// Checks if this is the third time this position has been reached.
+    /// Only the position of the stones is counted. Repetitions due to
+    /// second best calls are not counted.
     fn is_threefold(&self) -> bool {
         if self.num_turns() < Self::STONES_PER_PLAYER * 2 + 3 {
             // In the first phase stones get added so a 3-fold repetition is impossible.
@@ -734,7 +732,8 @@ impl Position {
             return false;
         }
         if !self.can_second_best() {
-            // By our assumptions we would have had a 3-fold on the previous move.
+            // Second best has been called which means we're back to a previous position
+            // and a threefold repetition would already have been detected.
             return false;
         }
         let mut repetitions = 1;
