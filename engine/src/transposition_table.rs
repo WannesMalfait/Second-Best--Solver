@@ -1,5 +1,5 @@
 use crate::{
-    eval,
+    eval::{self},
     position::{BitboardMove, PlayerMove, Position},
 };
 
@@ -77,7 +77,6 @@ impl TTMove {
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
 pub enum EntryType {
     #[default]
-    Undetermined,
     Exact,
     LowerBound,
     UpperBound,
@@ -85,10 +84,13 @@ pub enum EntryType {
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Entry {
+    /// The value of the node when this entry was stored.
     score: i16,
+    /// The move with the highest score at node.
     best_move: TTMove,
     entry_type: EntryType,
-    ply: u8,
+    /// How many ply deep did we search this node (lower bound)
+    depth: u8,
 }
 
 impl Entry {
@@ -97,26 +99,36 @@ impl Entry {
         score: i16,
         best_move: BitboardMove,
         entry_type: EntryType,
+        depth: u8,
         ply: u8,
     ) -> Self {
+        // If there is a mate store how many ply away it is.
+        let score = if score as isize >= eval::IS_WIN {
+            score + ply as i16
+        } else if score as isize <= eval::IS_LOSS {
+            score - ply as i16
+        } else {
+            score
+        };
         Self {
             score,
             best_move: TTMove::from_bitboard_move(pos, best_move),
             entry_type,
-            ply,
+            depth,
         }
     }
 
     /// The score for mate evals depends on the ply.
     pub fn score(&self, ply: isize) -> isize {
         if self.score as isize >= eval::IS_WIN {
-            self.score as isize - ply + self.ply as isize
+            self.score as isize - ply
         } else if self.score as isize <= eval::IS_LOSS {
-            self.score as isize + ply - self.ply as isize
+            self.score as isize + ply
         } else {
             self.score as isize
         }
     }
+
     pub fn best_move(&self, pos: &Position) -> BitboardMove {
         self.best_move.to_bitboard_move(pos)
     }
@@ -129,13 +141,16 @@ impl Entry {
         self.entry_type
     }
 
+    pub fn depth(&self) -> usize {
+        self.depth as usize
+    }
+
     pub fn ply(&self) -> usize {
-        self.ply as usize
+        self.depth as usize
     }
 }
 
 type Key = u64;
-type PartialKey = u32;
 
 /// Simple implementation of a transposition table.
 /// The idea is that multiple move orders can lead
@@ -146,17 +161,8 @@ type PartialKey = u32;
 /// deepening loop to get a quicker result.
 pub struct TranspositionTable {
     entries: Box<[Entry]>,
-    /// We store the keys in the table as well,
-    /// to be able to detect collisions.
-    /// We only store a truncated key as that is
-    /// enough to ensure we don't retreive a wrong
-    /// entry from the table.
-    /// This works because of the Chinese remainder
-    /// theorem: since 2^32 and the size of the
-    /// transposition table are coprime, there is
-    /// a unique key less than 2^32*size such that
-    /// key % 2^32 = key % size.
-    keys: Box<[PartialKey]>,
+    /// Store the keys to ensure we look up the right entry.
+    keys: Box<[Key]>,
 }
 
 impl Default for TranspositionTable {
@@ -164,14 +170,12 @@ impl Default for TranspositionTable {
         Self {
             entries: (0..Self::SIZE).map(|_| Entry::default()).collect(),
             // Ensure that the initial keys stored are not valid.
-            keys: (0..Self::SIZE)
-                .map(|_| Self::SIZE as PartialKey + 1)
-                .collect(),
+            keys: (0..Self::SIZE).map(|_| Self::SIZE as Key + 1).collect(),
         }
     }
 }
 
-/// The following are functions to find the next prime factor at compile time
+// The following are functions to find the next prime factor at compile time
 
 const fn med(min: u64, max: u64) -> u64 {
     (min + max) / 2
@@ -184,7 +188,7 @@ const fn has_factor(n: u64, min: u64, max: u64) -> bool {
     }
     // do not search for factor above sqrt(n)
     else if min + 1 >= max {
-        n % min == 0
+        n.is_multiple_of(min)
     } else {
         has_factor(n, min, med(min, max)) || has_factor(n, med(min, max), max)
     }
@@ -249,78 +253,22 @@ impl TranspositionTable {
         score: isize,
         best_move: BitboardMove,
         entry_type: EntryType,
+        depth: usize,
+        ply: usize,
     ) {
         let key = Self::key(pos);
         let index = self.index(key);
-        if self.keys[index] == key as PartialKey {
-            let old_entry = self.entries[index];
-            let old_score = old_entry.score(pos.ply() as isize);
-            match old_entry.entry_type() {
-                EntryType::Undetermined => {
-                    // Can overwrite safely.
-                }
-                EntryType::Exact => {
-                    if entry_type == EntryType::Exact && old_score != score {
-                        println!("Uh oh, tried to set {old_score} to {score}");
-                    }
-                    // We already know the exact score.
-                    return;
-                }
-                EntryType::LowerBound => {
-                    match entry_type {
-                        EntryType::Undetermined => return,
-                        EntryType::Exact => {}
-                        EntryType::LowerBound => {
-                            if old_score >= score {
-                                // Not a better bound.
-                                return;
-                            }
-                        }
-                        EntryType::UpperBound => {
-                            // We prefer lower bounds.
-                            return;
-                        }
-                    }
-                }
-                EntryType::UpperBound => {
-                    match entry_type {
-                        EntryType::Undetermined => return,
-                        EntryType::Exact => {}
-                        EntryType::LowerBound => {}
-                        EntryType::UpperBound => {
-                            if old_score <= score {
-                                // Not a better bound.
-                                return;
-                            }
-                        }
-                    }
-                }
-            }
-            // if old_entry.entry_type() != EntryType::Undetermined {
-            //     if entry_type == EntryType::Undetermined {
-            //         return;
-            //     }
-            //     let s = match entry_type {
-            //         EntryType::Exact => "=",
-            //         EntryType::LowerBound => ">=",
-            //         EntryType::UpperBound => "<=",
-            //         EntryType::Undetermined => "?",
-            //     };
-            //     let os = match old_entry.entry_type() {
-            //         EntryType::Exact => "=",
-            //         EntryType::LowerBound => ">=",
-            //         EntryType::UpperBound => "<=",
-            //         EntryType::Undetermined => "?",
-            //     };
-            //     println!(
-            //         "Overwriting entry: old score: {os}{}, new score: {s}{score}",
-            //         old_entry.score(pos.ply() as isize)
-            //     );
-            // }
-        }
-        let entry = Entry::new(pos, score as i16, best_move, entry_type, pos.ply() as u8);
+        // For now always overwrite.
+        let entry = Entry::new(
+            pos,
+            score as i16,
+            best_move,
+            entry_type,
+            depth as u8,
+            ply as u8,
+        );
         self.entries[index] = entry;
-        self.keys[index] = key as PartialKey;
+        self.keys[index] = key;
     }
 
     /// Try to get a stored score from the transposition table.
@@ -328,7 +276,8 @@ impl TranspositionTable {
     pub fn get(&self, pos: &Position) -> Option<Entry> {
         let key = Self::key(pos);
         let index = self.index(key);
-        if self.keys[index] == key as PartialKey {
+        // Ensure that we don't have a key collision (two keys which have the same index)
+        if self.keys[index] == key {
             return Some(self.entries[index]);
         }
         None
@@ -380,7 +329,7 @@ mod tests {
         for to in 0..8 {
             let bmove = BitboardMove::StoneMove(pos.stone_move(None, to));
 
-            tt.store(&pos, 0, bmove, EntryType::Exact);
+            tt.store(&pos, 0, bmove, EntryType::Exact, 0, 0);
             assert_eq!(tt.get(&pos).unwrap().best_move(&pos), bmove);
             pos.make_move(bmove);
         }
@@ -394,7 +343,7 @@ mod tests {
             pos.make_move(bmove);
             pos.second_best();
             let bmove = BitboardMove::StoneMove(pos.stone_move(None, (1 + to) % 8));
-            tt.store(&pos, 0, bmove, EntryType::Exact);
+            tt.store(&pos, 0, bmove, EntryType::Exact, 0, 0);
             assert_eq!(tt.get(&pos).unwrap().best_move(&pos), bmove);
             pos.make_move(bmove);
         }
@@ -420,7 +369,7 @@ mod tests {
         pos.make_phase_one_move(2);
         pos.make_phase_one_move(2);
         pos.show();
-        tt.store(&pos, 0, BitboardMove::SecondBest, EntryType::Undetermined);
+        tt.store(&pos, 0, BitboardMove::SecondBest, EntryType::Exact, 0, 0);
         pos.unmake_move();
         pos.unmake_move();
         pos.unmake_move();

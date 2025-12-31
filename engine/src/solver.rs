@@ -2,6 +2,8 @@ use crate::eval;
 use crate::movegen;
 use crate::position::GameStatus;
 use crate::position::Position;
+use crate::transposition_table::EntryType;
+use crate::transposition_table::TranspositionTable;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -13,6 +15,7 @@ pub struct Solver {
     abort: Arc<AtomicBool>,
     /// If true, don't print anything to stdout.
     quiet: bool,
+    ttable: TranspositionTable,
 }
 
 impl Default for Solver {
@@ -22,6 +25,7 @@ impl Default for Solver {
             nodes: 0,
             abort: Arc::new(AtomicBool::new(false)),
             quiet: true,
+            ttable: TranspositionTable::default(),
         }
     }
 }
@@ -67,9 +71,42 @@ impl Solver {
             return best_score;
         }
 
+        // Look up in the transposition table.
+        let mut tt_move = None;
+        if let Some(entry) = self.ttable.get(&self.position) {
+            // If we are searching deeper then we can't trust the transposition table.
+            if entry.depth() >= depth {
+                let score = entry.score(self.position.ply() as isize);
+                if score < eval::IS_WIN && score > eval::IS_LOSS {
+                    // Don't look at mate evals for now.
+                    // TODO: figure out what's wrong with mate evals.
+                    match entry.entry_type() {
+                        EntryType::Exact => return score,
+                        EntryType::LowerBound => {
+                            if score >= beta {
+                                return score;
+                            }
+                        }
+                        EntryType::UpperBound => {
+                            if score <= alpha {
+                                return score;
+                            }
+                        }
+                    }
+                }
+            }
+            // Still probably a good candidate to explore first.
+            tt_move = Some(entry.best_move(&self.position))
+        }
+
         // Look at the child nodes:
-        let moves = movegen::MoveGen::new(&self.position, None);
+        let moves = movegen::MoveGen::new(&self.position, tt_move);
+        let original_alpha = alpha;
+        let mut best_move = None;
         for bmove in moves {
+            if best_move.is_none() {
+                best_move = Some(bmove);
+            }
             if cfg!(debug_assertions) {
                 // Validate moves in debug builds.
                 self.position
@@ -89,6 +126,7 @@ impl Solver {
             self.position.unmake_move();
             if eval > best_score {
                 best_score = eval;
+                best_move = Some(bmove);
                 if best_score > alpha {
                     alpha = best_score;
                     if alpha >= beta {
@@ -97,6 +135,25 @@ impl Solver {
                 }
             }
         }
+        // Store in Transposition Table
+        self.ttable.store(
+            &self.position,
+            best_score,
+            best_move.unwrap(),
+            if best_score <= original_alpha {
+                // There might be an even worse score, but we did a cut-off.
+                EntryType::UpperBound
+            } else if best_score >= beta {
+                // There might be an event better score, but we did a cut-off.
+                EntryType::LowerBound
+            } else {
+                // No cut-off.
+                EntryType::Exact
+            },
+            depth,
+            self.position.ply(),
+        );
+
         best_score
     }
 
