@@ -193,6 +193,17 @@ impl Solver {
                     elapsed
                 );
                 print!("pv");
+                let mut pv_keys = vec![TranspositionTable::key(&self.position)];
+                let mut pv_pos = self.position.clone();
+                while let Some(entry) = self.ttable.get(&pv_pos) {
+                    let best = entry.best_move_for_printing();
+                    print!(" {best}");
+                    pv_pos.try_make_move(best).unwrap();
+                    if pv_keys.contains(&TranspositionTable::key(&pv_pos)) {
+                        break;
+                    };
+                    pv_keys.push(TranspositionTable::key(&pv_pos));
+                }
                 println!();
             }
             match eval::decode_eval(eval, self.position.ply() as isize) {
