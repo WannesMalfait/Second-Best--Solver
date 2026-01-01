@@ -132,12 +132,12 @@ fn generate_random_position(
             return None;
         }
     } else {
-        let eval = solver.search(depth_range.end / 2 + depth_range.start / 2);
+        let eval = solver.search(depth_range.end);
         let eval = eval.decode_eval();
         match eval {
             eval::ExplainableEval::Undetermined(_) => (),
             eval::ExplainableEval::Win(moves) | eval::ExplainableEval::Loss(moves) => {
-                if depth_range.start <= moves as usize && depth_range.end >= moves as usize {
+                if depth_range.start <= moves && depth_range.end >= moves {
                     // Position is solvable in given depth.
                     return Some(format!("{moves};") + &solver.position.clone().serialize());
                 } else {
@@ -252,12 +252,12 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
                                 ExplainableEval::Win(num_moves)
                                 | ExplainableEval::Loss(num_moves) => {
                                     if num_moves != num_moves_sol {
-                                        println!("\nFailed position {}\nExpected to solve in {num_moves_sol} but solved in {num_moves}", position);
+                                        println!("\nFailed position {position}\nExpected to solve in {num_moves_sol} but solved in {num_moves}");
                                         break;
                                     }
                                 }
                                 ExplainableEval::Undetermined(_) => {
-                                    println!("\nFailed to solve position {}", position);
+                                    println!("\nFailed to solve position {position}, ran at depth {max_depth}");
                                     break;
                                 }
                             }

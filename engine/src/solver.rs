@@ -77,21 +77,20 @@ impl Solver {
         if let Some(entry) = self.ttable.get(&self.position) {
             // If we are searching deeper then we can't trust the transposition table.
             if entry.depth() >= depth {
+                // set-pos 4 1 4 2 0 1 0 0 1 6 2 2 6 4 5
                 let score = entry.score();
-                if !score.is_mate() {
-                    // Don't look at mate evals for now.
-                    // TODO: figure out what's wrong with mate evals.
-                    match entry.entry_type() {
-                        EntryType::Exact => return score,
-                        EntryType::LowerBound => {
-                            if score >= beta {
-                                return score;
-                            }
+                // Don't look at mate evals for now.
+                // TODO: figure out what's wrong with mate evals.
+                match entry.entry_type() {
+                    EntryType::Exact => return score,
+                    EntryType::LowerBound => {
+                        if score >= beta {
+                            return score;
                         }
-                        EntryType::UpperBound => {
-                            if score <= alpha {
-                                return score;
-                            }
+                    }
+                    EntryType::UpperBound => {
+                        if score <= alpha {
+                            return score;
                         }
                     }
                 }
@@ -121,7 +120,9 @@ impl Solver {
             let next_depth = depth - 1;
 
             // Ensure that the ply is kept track of correctly for mate evals.
-            let eval = -self.negamax(next_depth, -beta, -alpha).increase_ply();
+            let eval = -self
+                .negamax(next_depth, -beta.decrease_ply(), -alpha.decrease_ply())
+                .increase_ply();
 
             self.position.unmake_move();
             if eval > best_score {
@@ -178,7 +179,8 @@ impl Solver {
         let mut eval = Score::default();
         let start = time::Instant::now();
         for depth in 1..=depth {
-            let new_eval = self.negamax(depth, Score::LOSS, Score::WIN);
+            // Limit alpha and beta to mate in the depth that we search so that we don't settle for slower mates.
+            let new_eval = self.negamax(depth, Score::loss_in(depth), Score::win_in(depth));
             if self.abort_search() {
                 return eval;
             }
@@ -197,6 +199,16 @@ impl Solver {
                 while let Some(entry) = self.ttable.get(&pv_pos) {
                     let best = entry.best_move_for_printing();
                     print!(" {best}");
+                    print!(
+                        " ({}{:?}, {})",
+                        match entry.entry_type() {
+                            EntryType::Exact => "=",
+                            EntryType::LowerBound => ">=",
+                            EntryType::UpperBound => "<=",
+                        },
+                        entry.score(),
+                        entry.depth()
+                    );
                     pv_pos.try_make_move(best).unwrap();
                     if pv_keys.contains(&TranspositionTable::key(&pv_pos)) {
                         break;

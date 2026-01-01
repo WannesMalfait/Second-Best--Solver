@@ -37,11 +37,23 @@ impl Score {
         Score(0)
     }
 
+    /// Increase relative ply of mates by 1.
     pub fn increase_ply(self) -> Self {
         if self.is_loss() {
             Score(self.0 + 1)
         } else if self.is_win() {
             Score(self.0 - 1)
+        } else {
+            self
+        }
+    }
+
+    /// Decrease relative ply of mates by 1.
+    pub fn decrease_ply(self) -> Self {
+        if self.is_loss() && self != Self::LOSS {
+            Score(self.0 - 1)
+        } else if self.is_win() && self != Self::WIN {
+            Score(self.0 + 1)
         } else {
             self
         }
