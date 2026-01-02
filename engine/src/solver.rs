@@ -112,9 +112,11 @@ impl Solver {
             } else {
                 self.position.make_move(bmove);
             }
-            // TODO: experiment with selectively increasing search.
-            // Doing so can cause the solver to find slower mates, so it should be carefully implemented.
-            let next_depth = depth - 1;
+            let next_depth = if matches!(bmove, crate::position::BitboardMove::SecondBest) {
+                depth
+            } else {
+                depth - 1
+            };
 
             // Ensure that the ply is kept track of correctly for mate evals.
             let eval = -self
