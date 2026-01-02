@@ -77,10 +77,7 @@ impl Solver {
         if let Some(entry) = self.ttable.get(&self.position) {
             // If we are searching deeper then we can't trust the transposition table.
             if entry.depth() >= depth {
-                // set-pos 4 1 4 2 0 1 0 0 1 6 2 2 6 4 5
                 let score = entry.score();
-                // Don't look at mate evals for now.
-                // TODO: figure out what's wrong with mate evals.
                 match entry.entry_type() {
                     EntryType::Exact => return score,
                     EntryType::LowerBound => {
@@ -157,6 +154,143 @@ impl Solver {
         best_score
     }
 
+    fn negamax_mate(&mut self, mut alpha: Score, beta: Score) -> Score {
+        // Don't check this every node, but often enough.
+        if self.nodes.is_multiple_of(1024) && self.abort_search() {
+            // Have to stop the search now.
+            return Score::draw();
+        }
+
+        self.nodes += 1;
+        match self.position.game_status() {
+            GameStatus::WeLost => return Score::loss_in(0),
+            GameStatus::WeWon => return Score::win_in(0),
+            GameStatus::Draw => return Score::draw(),
+            GameStatus::OnGoing => {}
+        }
+
+        // Set the best score to the minimal value at first.
+        // We already checked that we aren't lost now, so worst case we lose next ply.
+        let mut best_score = Score::loss_in(1);
+        if best_score >= beta {
+            return best_score;
+        }
+
+        // Look up in the transposition table.
+        let mut tt_move = None;
+        if let Some(entry) = self.ttable.get(&self.position) {
+            tt_move = Some(entry.best_move(&self.position));
+            let score = entry.score();
+            if score.is_mate() && entry.depth() == TranspositionTable::INF_DEPTH {
+                match entry.entry_type() {
+                    EntryType::Exact => return score,
+                    EntryType::LowerBound => {
+                        if score >= beta {
+                            return score;
+                        }
+                    }
+                    EntryType::UpperBound => {
+                        if score <= alpha {
+                            return score;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Look at the child nodes:
+        let moves = movegen::MoveGen::new(&self.position, tt_move);
+        let original_alpha = alpha;
+        let mut best_move = None;
+        for bmove in moves {
+            if best_move.is_none() {
+                best_move = Some(bmove);
+            }
+            if cfg!(debug_assertions) {
+                // Validate moves in debug builds.
+                self.position
+                    .try_make_move(bmove.to_player_move(&self.position))
+                    .unwrap();
+            } else {
+                self.position.make_move(bmove);
+            }
+
+            // Ensure that the ply is kept track of correctly for mate evals.
+            let eval = -self
+                .negamax_mate(-beta.decrease_ply(), -alpha.decrease_ply())
+                .increase_ply();
+
+            self.position.unmake_move();
+
+            if eval > best_score {
+                best_score = eval;
+                best_move = Some(bmove);
+                if best_score > alpha {
+                    alpha = best_score;
+                    if alpha >= beta {
+                        break;
+                    }
+                }
+            }
+        }
+        // Store in Transposition Table
+        self.ttable.store(
+            &self.position,
+            best_score,
+            best_move.unwrap(),
+            if best_score <= original_alpha {
+                // There might be an even worse score, but we did a cut-off.
+                EntryType::UpperBound
+            } else if best_score >= beta {
+                // There might be an event better score, but we did a cut-off.
+                EntryType::LowerBound
+            } else {
+                // No cut-off.
+                EntryType::Exact
+            },
+            TranspositionTable::INF_DEPTH,
+        );
+
+        best_score
+    }
+
+    /// Binary search for a mate within the given bounds. A mate should exist.
+    fn mate_search(
+        &mut self,
+        mut min: Score,
+        mut max: Score,
+        start: time::Instant,
+        depth: usize,
+    ) -> Score {
+        while min < max {
+            let mut mid = Score::middle(min, max);
+            if mid <= Score::draw() && min.half() < mid {
+                mid = min.half();
+            }
+            if mid >= Score::draw() && max.half() > mid {
+                mid = max.half();
+            }
+            // Null-window test to see if we are better or worse than mid.
+            let result = self.negamax_mate(
+                mid,
+                if mid >= Score::draw() {
+                    mid.decrease_ply()
+                } else {
+                    mid.increase_ply()
+                },
+            );
+            if result <= mid {
+                max = result;
+            } else {
+                min = result;
+            }
+            if !self.quiet {
+                self.print_search_info(start, depth, if min.is_win() { min } else { max });
+            }
+        }
+        min
+    }
+
     /// Returns whether the search is being aborted.
     pub fn abort_search(&self) -> bool {
         self.abort.load(Ordering::Relaxed)
@@ -179,50 +313,49 @@ impl Solver {
         self.nodes = 0;
     }
 
+    fn print_search_info(&self, start: time::Instant, depth: usize, eval: Score) {
+        let elapsed = start.elapsed();
+        let nodes = self.nodes;
+        let knps = self.nodes as u128 / (1 + elapsed.as_millis());
+        println!(
+            "info depth {depth} score {eval} nodes {nodes} knps {knps} ({:?} total time)",
+            elapsed
+        );
+        print!("pv");
+        let mut pv_keys = vec![TranspositionTable::key(&self.position)];
+        let mut pv_pos = self.position.clone();
+        while let Some(entry) = self.ttable.get(&pv_pos) {
+            let best = entry.best_move_for_printing();
+            print!(" {best}");
+            pv_pos.try_make_move(best).unwrap();
+            if pv_keys.contains(&TranspositionTable::key(&pv_pos)) {
+                break;
+            };
+            pv_keys.push(TranspositionTable::key(&pv_pos));
+        }
+        println!();
+    }
+
     pub fn search(&mut self, depth: usize) -> Score {
         self.initialize_for_search();
         let mut eval = Score::default();
         let start = time::Instant::now();
         for depth in 1..=depth {
-            // Limit alpha and beta to mate in the depth that we search so that we don't settle for slower mates.
-            let new_eval = self.negamax(depth, Score::loss_in(depth), Score::win_in(depth));
+            let new_eval = self.negamax(depth, Score::loss_in(0), Score::win_in(0));
             if self.abort_search() {
                 return eval;
             }
             eval = new_eval;
             if !self.quiet {
-                let elapsed = start.elapsed();
-                let nodes = self.nodes;
-                let knps = self.nodes as u128 / (1 + elapsed.as_millis());
-                println!(
-                    "info depth {depth} score {eval:?} nodes {nodes} knps {knps} ({:?} total time)",
-                    elapsed
-                );
-                print!("pv");
-                let mut pv_keys = vec![TranspositionTable::key(&self.position)];
-                let mut pv_pos = self.position.clone();
-                while let Some(entry) = self.ttable.get(&pv_pos) {
-                    let best = entry.best_move_for_printing();
-                    print!(" {best}");
-                    print!(
-                        " ({}{:?}, {})",
-                        match entry.entry_type() {
-                            EntryType::Exact => "=",
-                            EntryType::LowerBound => ">=",
-                            EntryType::UpperBound => "<=",
-                        },
-                        entry.score(),
-                        entry.depth()
-                    );
-                    pv_pos.try_make_move(best).unwrap();
-                    if pv_keys.contains(&TranspositionTable::key(&pv_pos)) {
-                        break;
-                    };
-                    pv_keys.push(TranspositionTable::key(&pv_pos));
-                }
-                println!();
+                self.print_search_info(start, depth, eval);
             }
             if eval.is_mate() {
+                // Try to find an even faster mate.
+                if eval.is_win() {
+                    eval = self.mate_search(eval, Score::win_in(depth), start, depth);
+                } else if eval.is_loss() {
+                    eval = self.mate_search(Score::loss_in(depth), eval, start, depth);
+                }
                 break;
             }
         }

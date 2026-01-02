@@ -189,6 +189,7 @@ const fn next_prime(n: u64) -> u64 {
 }
 
 impl TranspositionTable {
+    pub const INF_DEPTH: usize = 0;
     const SIZE: usize = next_prime(1 << 23) as usize;
 
     pub fn clear(&mut self) {

@@ -6,6 +6,12 @@ type ScoreType = i16;
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Score(ScoreType);
 
+impl std::fmt::Display for Score {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 impl Score {
     pub const WIN: Score = Score(1000);
     pub const LOSS: Score = Score(-Self::WIN.0);
@@ -35,6 +41,10 @@ impl Score {
 
     pub fn draw() -> Score {
         Score(0)
+    }
+
+    pub fn middle(a: Score, b: Score) -> Self {
+        Score(a.0 + (b.0 - a.0) / 2)
     }
 
     /// Increase relative ply of mates by 1.
@@ -68,6 +78,10 @@ impl Score {
         } else {
             ExplainableEval::Undetermined(self.0)
         }
+    }
+
+    pub fn half(self) -> Score {
+        Score(self.0 / 2)
     }
 }
 
