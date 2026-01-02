@@ -28,12 +28,12 @@ pub struct MoveGen {
     stage: Stage,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 enum Stage {
     PvMove,
     VerticalAlignments,
-    GoodToMoves,
     SecondBest,
+    GoodToMoves,
     BadToMoves,
 }
 
@@ -124,7 +124,13 @@ impl Iterator for MoveGen {
                 return Some(bmove);
             }
             self.stack_i = 0;
+            self.stage = Stage::SecondBest;
+        }
+        if self.stage == Stage::SecondBest {
             self.stage = Stage::GoodToMoves;
+            if self.can_second_best {
+                return Some(BitboardMove::SecondBest);
+            }
         }
         if self.stage == Stage::GoodToMoves {
             if self.good_to_spots != 0
@@ -133,13 +139,7 @@ impl Iterator for MoveGen {
                 return Some(bmove);
             }
             self.stack_i = 0;
-            self.stage = Stage::SecondBest;
-        }
-        if self.stage == Stage::SecondBest {
             self.stage = Stage::BadToMoves;
-            if self.can_second_best {
-                return Some(BitboardMove::SecondBest);
-            }
         }
         if self.stage == Stage::BadToMoves {
             return self.next_stone_move(self.bad_to_spots);
