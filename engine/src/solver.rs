@@ -170,6 +170,11 @@ impl Solver {
         self.quiet = false
     }
 
+    pub fn reset(&mut self) {
+        self.nodes = 0;
+        self.ttable.clear();
+    }
+
     fn initialize_for_search(&mut self) {
         self.nodes = 0;
     }

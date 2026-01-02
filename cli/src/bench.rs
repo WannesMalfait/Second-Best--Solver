@@ -239,6 +239,7 @@ pub fn run_benchmarks(abort: Arc<AtomicBool>, num_threads: usize) -> io::Result<
                                 );
                                 io::stdout().flush().unwrap();
                             }
+                            solver.reset();
                             solver.position = Position::default();
                             let (num_moves_sol, moves) = position.split_once(';').unwrap();
                             let num_moves_sol = num_moves_sol.parse().unwrap();

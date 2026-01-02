@@ -191,6 +191,11 @@ const fn next_prime(n: u64) -> u64 {
 impl TranspositionTable {
     const SIZE: usize = next_prime(1 << 23) as usize;
 
+    pub fn clear(&mut self) {
+        self.entries.fill(Entry::default());
+        self.keys.fill(Self::SIZE as Key + 1);
+    }
+
     #[inline(always)]
     fn index(&self, key: Key) -> usize {
         // Make the keys a bit more spread out.
