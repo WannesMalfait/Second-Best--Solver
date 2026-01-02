@@ -114,8 +114,8 @@ pub enum ExplainableEval {
 pub fn static_eval(pos: &Position) -> Score {
     // For now just count how many stacks are controlled by each player.
     let mut score = 0;
-    score += pos.controlled_stacks(true).count_ones() as ScoreType;
-    score -= pos.controlled_stacks(false).count_ones() as ScoreType;
+    score += pos.controlled_stacks(Position::US).count_ones() as ScoreType;
+    score -= pos.controlled_stacks(Position::THEM).count_ones() as ScoreType;
     // Since the bitboards store two copies of the board,
     // we need to divide by 2.
     score /= 2;

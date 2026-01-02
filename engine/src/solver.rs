@@ -281,6 +281,14 @@ impl Solver {
                     mid.increase_ply()
                 },
             );
+            if self.abort_search() {
+                // Return our best bound on the mate.
+                if min.is_win() {
+                    return min;
+                } else {
+                    return max;
+                }
+            }
             if result <= mid {
                 max = result;
             } else {

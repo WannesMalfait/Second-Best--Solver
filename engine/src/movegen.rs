@@ -67,12 +67,10 @@ impl MoveGen {
         let second_phase = pos.is_second_phase();
         let mut free_to_spots = pos.free_spots();
         let mut alignment_spots = pos.vertical_alignment_spots();
-        if !second_phase {
-            if let Some(banned_move) = banned_move {
-                // Remove the banned move from the possible moves.
-                free_to_spots &= !banned_move;
-                alignment_spots &= !banned_move;
-            }
+        if !second_phase && let Some(banned_move) = banned_move {
+            // Remove the banned move from the possible moves.
+            free_to_spots &= !banned_move;
+            alignment_spots &= !banned_move;
         }
         let possible_from_spots = pos.from_spots(true);
         // Ensure we don't make the same moves twice.
@@ -120,19 +118,19 @@ impl Iterator for MoveGen {
             }
         }
         if self.stage == Stage::VerticalAlignments {
-            if self.alignment_spots != 0 {
-                if let Some(bmove) = self.next_stone_move(self.alignment_spots) {
-                    return Some(bmove);
-                }
+            if self.alignment_spots != 0
+                && let Some(bmove) = self.next_stone_move(self.alignment_spots)
+            {
+                return Some(bmove);
             }
             self.stack_i = 0;
             self.stage = Stage::GoodToMoves;
         }
         if self.stage == Stage::GoodToMoves {
-            if self.good_to_spots != 0 {
-                if let Some(bmove) = self.next_stone_move(self.good_to_spots) {
-                    return Some(bmove);
-                }
+            if self.good_to_spots != 0
+                && let Some(bmove) = self.next_stone_move(self.good_to_spots)
+            {
+                return Some(bmove);
             }
             self.stack_i = 0;
             self.stage = Stage::SecondBest;

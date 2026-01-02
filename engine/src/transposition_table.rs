@@ -18,6 +18,15 @@ impl TTMove {
     const TO_BITS: u8 = 0b0111_0000;
     const SECOND_BEST_BIT: u8 = 0b1000_0000;
 
+    /// Create an invalid state
+    fn invalid() -> Self {
+        TTMove(0)
+    }
+
+    fn is_valid(self) -> bool {
+        self.0 != 0
+    }
+
     fn from(&self) -> Option<usize> {
         let from_stack = (self.0 & Self::FROM_BITS) as usize;
         if from_stack == 8 {
@@ -109,6 +118,10 @@ impl Entry {
         }
     }
 
+    pub fn invalidate(&mut self) {
+        self.best_move = TTMove::invalid();
+    }
+
     pub fn score(&self) -> Score {
         self.score
     }
@@ -131,6 +144,10 @@ impl Entry {
 
     pub fn ply(&self) -> usize {
         self.depth as usize
+    }
+
+    fn is_valid(&self) -> bool {
+        self.best_move.is_valid()
     }
 }
 
@@ -193,7 +210,6 @@ impl TranspositionTable {
     const SIZE: usize = next_prime(1 << 23) as usize;
 
     pub fn clear(&mut self) {
-        self.entries.fill(Entry::default());
         self.keys.fill(Self::SIZE as Key + 1);
     }
 
@@ -259,7 +275,7 @@ impl TranspositionTable {
         let key = Self::key(pos);
         let index = self.index(key);
         // Ensure that we don't have a key collision (two keys which have the same index)
-        if self.keys[index] == key {
+        if self.keys[index] == key && self.entries[index].is_valid() {
             return Some(self.entries[index]);
         }
         None
