@@ -10,6 +10,12 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time;
 
+#[derive(Default)]
+struct TTStats {
+    tthits: usize,
+    ttmisses: usize,
+}
+
 pub struct Solver {
     pub position: Position,
     nodes: usize,
@@ -17,6 +23,7 @@ pub struct Solver {
     /// If true, don't print anything to stdout.
     quiet: bool,
     ttable: TranspositionTable,
+    ttstats: TTStats,
 }
 
 impl Default for Solver {
@@ -27,6 +34,7 @@ impl Default for Solver {
             abort: Arc::new(AtomicBool::new(false)),
             quiet: true,
             ttable: TranspositionTable::default(),
+            ttstats: TTStats::default(),
         }
     }
 }
@@ -75,6 +83,7 @@ impl Solver {
         // Look up in the transposition table.
         let mut tt_move = None;
         if let Some(entry) = self.ttable.get(&self.position) {
+            self.ttstats.tthits += 1;
             // If we are searching deeper then we can't trust the transposition table.
             if entry.depth() >= depth {
                 let score = entry.score();
@@ -94,6 +103,8 @@ impl Solver {
             }
             // Still probably a good candidate to explore first.
             tt_move = Some(entry.best_move(&self.position))
+        } else {
+            self.ttstats.ttmisses += 1;
         }
 
         // Look at the child nodes:
@@ -181,6 +192,7 @@ impl Solver {
         // Look up in the transposition table.
         let mut tt_move = None;
         if let Some(entry) = self.ttable.get(&self.position) {
+            self.ttstats.tthits += 1;
             tt_move = Some(entry.best_move(&self.position));
             let score = entry.score();
             if score.is_mate() && entry.depth() == TranspositionTable::INF_DEPTH {
@@ -198,6 +210,8 @@ impl Solver {
                     }
                 }
             }
+        } else {
+            self.ttstats.ttmisses += 1;
         }
 
         // Look at the child nodes:
@@ -317,10 +331,12 @@ impl Solver {
     pub fn reset(&mut self) {
         self.nodes = 0;
         self.ttable.clear();
+        self.ttstats = TTStats::default();
     }
 
     fn initialize_for_search(&mut self) {
         self.nodes = 0;
+        self.ttstats = TTStats::default();
     }
 
     fn print_search_info(&self, start: time::Instant, depth: usize, eval: Score) {
@@ -328,8 +344,10 @@ impl Solver {
         let nodes = self.nodes;
         let knps = self.nodes as u128 / (1 + elapsed.as_millis());
         println!(
-            "info depth {depth} score {eval} nodes {nodes} knps {knps} ({:?} total time)",
-            elapsed
+            "info depth {depth} score {eval} nodes {nodes} knps {knps} ({:?} total time) tt% {:.1}",
+            elapsed,
+            100. * self.ttstats.tthits as f64
+                / (self.ttstats.tthits + self.ttstats.ttmisses + 1) as f64,
         );
         print!("pv");
         let mut pv_keys = vec![TranspositionTable::key(&self.position)];
